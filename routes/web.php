@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\GitHubController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EpicController;
+use App\Http\Controllers\IssueController;
 use App\Http\Controllers\RetrospectiveController;
 use App\Http\Controllers\SprintController;
 use App\Http\Controllers\SyncController;
@@ -43,6 +44,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/retrospectives', [RetrospectiveController::class, 'store'])->name('retrospectives.store');
     Route::put('/retrospectives/{retrospective}', [RetrospectiveController::class, 'update'])->name('retrospectives.update');
     Route::delete('/retrospectives/{retrospective}', [RetrospectiveController::class, 'destroy'])->name('retrospectives.destroy');
+
+    // Issue
+    Route::patch('/issues/{issue}', [IssueController::class, 'update'])->name('issues.update');
 
     // GitHub 同期
     Route::post('/sync', SyncController::class)->name('sync');

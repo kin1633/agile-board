@@ -40,7 +40,7 @@ const mainNavItems: NavItem[] = [
         icon: ClipboardList,
     },
     {
-        title: 'エピック',
+        title: 'エピック（案件）',
         href: epics.index(),
         icon: Layers,
     },
@@ -59,12 +59,12 @@ const mainNavItems: NavItem[] = [
 const footerNavItems: NavItem[] = [
     {
         title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
+        href: 'https://github.com/kin1633/agile-board/tree/main',
         icon: FolderGit2,
     },
     {
         title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
+        href: 'https://github.com/kin1633/agile-board/tree/main/docs',
         icon: BookOpen,
     },
 ];

@@ -1,5 +1,6 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { update as issueUpdate } from '@/routes/issues';
 import {
     Bar,
     BarChart,
@@ -62,11 +63,17 @@ interface AssigneeWorkload {
     total_points: number;
 }
 
+interface EpicOption {
+    id: number;
+    title: string;
+}
+
 interface Props {
     sprint: SprintInfo;
     issues: Issue[];
     burndownData: BurndownPoint[];
     assigneeWorkload: AssigneeWorkload[];
+    epics: EpicOption[];
 }
 
 type Tab = 'issues' | 'burndown' | 'workload';
@@ -76,8 +83,16 @@ export default function SprintShow({
     issues,
     burndownData,
     assigneeWorkload,
+    epics,
 }: Props) {
     const [activeTab, setActiveTab] = useState<Tab>('issues');
+
+    /** Issue のエピック（案件）紐付けを更新する */
+    const handleEpicChange = (issue: Issue, epicId: string) => {
+        router.patch(issueUpdate({ issue: issue.id }).url, {
+            epic_id: epicId === '' ? null : Number(epicId),
+        });
+    };
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'スプリント', href: sprintRoutes.index() },
@@ -160,7 +175,7 @@ export default function SprintShow({
                                     >
                                         <div className="flex items-center gap-3">
                                             <span
-                                                className={`h-2 w-2 rounded-full ${issue.state === 'open' ? 'bg-green-500' : 'bg-muted-foreground'}`}
+                                                className={`h-2 w-2 shrink-0 rounded-full ${issue.state === 'open' ? 'bg-green-500' : 'bg-muted-foreground'}`}
                                             />
                                             <span className="text-xs text-muted-foreground">
                                                 #{issue.github_issue_number}
@@ -168,11 +183,29 @@ export default function SprintShow({
                                             <span className="text-sm">
                                                 {issue.title}
                                             </span>
-                                            {issue.epic && (
-                                                <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">
-                                                    {issue.epic.title}
-                                                </span>
-                                            )}
+                                            {/* エピック（案件）選択ドロップダウン */}
+                                            <select
+                                                value={issue.epic?.id ?? ''}
+                                                onChange={(e) =>
+                                                    handleEpicChange(
+                                                        issue,
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs text-purple-700 focus:outline-none"
+                                            >
+                                                <option value="">
+                                                    案件なし
+                                                </option>
+                                                {epics.map((epic) => (
+                                                    <option
+                                                        key={epic.id}
+                                                        value={epic.id}
+                                                    >
+                                                        {epic.title}
+                                                    </option>
+                                                ))}
+                                            </select>
                                             {issue.labels.map((label) => (
                                                 <span
                                                     key={label.id}
