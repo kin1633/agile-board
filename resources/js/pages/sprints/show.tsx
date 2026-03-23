@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     Bar,
@@ -84,7 +84,6 @@ export default function SprintShow({
         { title: sprint.title, href: sprintRoutes.show({ sprint: sprint.id }) },
     ];
 
-    const openCount = issues.filter((i) => i.state === 'open').length;
     const closedCount = issues.filter((i) => i.state === 'closed').length;
 
     return (
@@ -98,7 +97,7 @@ export default function SprintShow({
                             {sprint.title}
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            {sprint.start_date} 〜 {sprint.end_date}　(
+                            {sprint.start_date} 〜 {sprint.end_date} (
                             {sprint.working_days} 営業日)
                         </p>
                     </div>
