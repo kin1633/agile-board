@@ -261,10 +261,9 @@ Wayfinder generates TypeScript functions for Laravel routes. Import from `@/acti
 
 </laravel-boost-guidelines>
 
-## コメント規約
+## コメント規約（最優先）
 
-- コメントは日本語で記述すること
-- DocBlock（PHPDoc / JSDoc）も日本語で記述すること
+- **全てのコメント・DocBlock（PHPDoc / JSDoc）は必ず日本語で記述すること**
 - コードを読めばわかることにはコメントを書かない
 - 以下の場合は必ずコメントを残すこと：
     - ビジネスロジック・業務ルールの説明
@@ -273,6 +272,14 @@ Wayfinder generates TypeScript functions for Laravel routes. Import from `@/acti
     - 外部APIや仕様の制約による特殊な処理
     - 将来の開発者が迷いそうな箇所
 
-## コメント規約（最優先）
+## Git・PR規約
 
-- **全てのコメント・DocBlockは必ず日本語で記述すること**
+- 実装完了後は必ずコミット・プッシュ・PRを作成すること
+- コミットメッセージは日本語で記述すること（例: `feat: GitHub OAuth認証の実装`）
+- PRのタイトル・本文も日本語で記述すること
+- PR本文には「何を実装したか」「変更ファイル一覧」「動作確認方法」を記載すること
+
+## ドキュメント更新規約
+
+- 機能追加・改修のコミットと同じタイミングで必ず `docs/` を更新すること
+- `docs/` ディレクトリで設計書・使い方ドキュメントを管理する
