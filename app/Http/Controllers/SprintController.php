@@ -1,0 +1,123 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Sprint;
+use Carbon\Carbon;
+use Carbon\CarbonPeriod;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class SprintController extends Controller
+{
+    public function index(): Response
+    {
+        $sprints = Sprint::with('milestone.repository')
+            ->orderByDesc('end_date')
+            ->get()
+            ->map(fn (Sprint $sprint) => [
+                'id' => $sprint->id,
+                'title' => $sprint->title,
+                'start_date' => $sprint->start_date?->toDateString(),
+                'end_date' => $sprint->end_date?->toDateString(),
+                'state' => $sprint->state,
+                'working_days' => $sprint->working_days,
+                'point_velocity' => $sprint->pointVelocity(),
+            ]);
+
+        return Inertia::render('sprints/index', compact('sprints'));
+    }
+
+    public function show(Sprint $sprint): Response
+    {
+        $sprint->load(['issues.labels', 'issues.epic', 'milestone.repository']);
+
+        $issues = $sprint->issues->map(fn ($issue) => [
+            'id' => $issue->id,
+            'github_issue_number' => $issue->github_issue_number,
+            'title' => $issue->title,
+            'state' => $issue->state,
+            'assignee_login' => $issue->assignee_login,
+            'story_points' => $issue->story_points,
+            'exclude_velocity' => $issue->exclude_velocity,
+            'closed_at' => $issue->closed_at?->toDateString(),
+            'epic' => $issue->epic ? ['id' => $issue->epic->id, 'title' => $issue->epic->title] : null,
+            'labels' => $issue->labels->map(fn ($l) => ['id' => $l->id, 'name' => $l->name])->all(),
+        ]);
+
+        $burndownData = $this->buildBurndownData($sprint);
+        $assigneeWorkload = $this->buildAssigneeWorkload($sprint);
+
+        return Inertia::render('sprints/show', [
+            'sprint' => [
+                'id' => $sprint->id,
+                'title' => $sprint->title,
+                'start_date' => $sprint->start_date?->toDateString(),
+                'end_date' => $sprint->end_date?->toDateString(),
+                'working_days' => $sprint->working_days,
+                'state' => $sprint->state,
+                'point_velocity' => $sprint->pointVelocity(),
+                'issue_velocity' => $sprint->issueVelocity(),
+            ],
+            'issues' => $issues,
+            'burndownData' => $burndownData,
+            'assigneeWorkload' => $assigneeWorkload,
+        ]);
+    }
+
+    /**
+     * バーンダウンチャート用データを生成する。
+     *
+     * @return array<int, array{date: string, ideal: int|null, actual: int|null}>
+     */
+    private function buildBurndownData(Sprint $sprint): array
+    {
+        if (! $sprint->start_date || ! $sprint->end_date) {
+            return [];
+        }
+
+        $issues = $sprint->issues;
+        $totalPoints = (int) $issues->sum('story_points');
+
+        $period = CarbonPeriod::create($sprint->start_date, $sprint->end_date);
+        $days = collect($period)->map(fn (Carbon $d) => $d->toDateString())->values();
+        $dayCount = max(1, $days->count() - 1);
+        $today = now()->startOfDay();
+
+        return $days->map(function ($date, $index) use ($totalPoints, $dayCount, $today, $issues) {
+            $ideal = (int) round($totalPoints * (1 - $index / $dayCount));
+
+            $actual = null;
+            $carbonDate = Carbon::parse($date);
+            if ($carbonDate->lte($today)) {
+                $closed = (int) $issues
+                    ->where('state', 'closed')
+                    ->filter(fn ($i) => $i->closed_at && Carbon::parse($i->closed_at)->lte($carbonDate))
+                    ->sum('story_points');
+                $actual = max(0, $totalPoints - $closed);
+            }
+
+            return compact('date', 'ideal', 'actual');
+        })->all();
+    }
+
+    /**
+     * 担当者別の open Issue 数と合計ポイントを集計する。
+     *
+     * @return array<int, array{assignee: string, open_issues: int, total_points: int}>
+     */
+    private function buildAssigneeWorkload(Sprint $sprint): array
+    {
+        return $sprint->issues
+            ->where('state', 'open')
+            ->whereNotNull('assignee_login')
+            ->groupBy('assignee_login')
+            ->map(fn ($issues, $assignee) => [
+                'assignee' => $assignee,
+                'open_issues' => $issues->count(),
+                'total_points' => (int) $issues->sum('story_points'),
+            ])
+            ->values()
+            ->all();
+    }
+}
