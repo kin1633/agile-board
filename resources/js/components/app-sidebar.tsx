@@ -58,7 +58,7 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: '設定',
-        href: settings.repositories(),
+        href: settings.general(),
         icon: Settings,
     },
 ];
