@@ -28,6 +28,7 @@ import sprints from '@/routes/sprints';
 import epics from '@/routes/epics';
 import retrospectives from '@/routes/retrospectives';
 import { general, repositories, members, labels } from '@/routes/settings';
+import appearance from '@/routes/appearance';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -62,6 +63,7 @@ const mainNavItems: NavItem[] = [
         icon: Settings,
         children: [
             { title: '一般', href: general() },
+            { title: '外観', href: appearance.edit() },
             { title: 'リポジトリ', href: repositories() },
             { title: 'メンバー', href: members() },
             { title: 'ラベル', href: labels() },
