@@ -17,6 +17,8 @@ use Illuminate\Http\Client\PendingRequest;
  * 以下の項目は同期時に上書きしない（ユーザーが手動設定する値）:
  * - issues.story_points
  * - issues.exclude_velocity
+ * - issues.estimated_hours
+ * - issues.actual_hours
  * - sprints.start_date（既存レコードのみ）
  * - sprints.working_days（既存レコードのみ）
  *
@@ -78,7 +80,7 @@ class GitHubSyncService
     {
         $client = $this->makeClient($githubToken);
 
-        $this->syncMilestones($repository, $client);
+        $this->syncMilestones($repository, $client, $githubToken);
         $this->syncLabels($repository, $client);
 
         // Project Number が設定されている場合のみ Iteration ベースのスプリント同期を実行
@@ -96,7 +98,7 @@ class GitHubSyncService
      * スプリントと Issue の紐付けは Iteration 同期（syncProjectIterations）に委ねる。
      * 未設定の場合は従来通りマイルストーンをスプリントとして扱う。
      */
-    private function syncMilestones(Repository $repository, PendingRequest $client): void
+    private function syncMilestones(Repository $repository, PendingRequest $client, string $token): void
     {
         $milestones = $this->fetchAllPages(
             $client,
@@ -124,7 +126,7 @@ class GitHubSyncService
             }
 
             $this->syncSprintForMilestone($milestone, $data);
-            $this->syncIssuesForMilestone($repository, $milestone, $data['number'], $client);
+            $this->syncIssuesForMilestone($repository, $milestone, $data['number'], $client, $token);
         }
     }
 
@@ -172,19 +174,26 @@ class GitHubSyncService
             }
 
             $issues = $result['issuesByIteration'][$iteration['id']] ?? [];
-            $this->syncIssuesForIteration($repository, $sprint, $issues);
+            $this->syncIssuesForIteration($repository, $sprint, $issues, $token);
         }
     }
 
     /**
      * Iteration に属する Issue を同期する。
      *
-     * @param  array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, labels: array<int, string>}>  $issuesData
+     * 複数リポジトリが同一プロジェクトに紐付く場合、GraphQL レスポンスの
+     * repo_owner / repo_name を使って正しい repository_id を解決する。
+     *
+     * @param  array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, labels: array<int, string>, repo_owner: string|null, repo_name: string|null}>  $issuesData
      */
-    private function syncIssuesForIteration(Repository $repository, Sprint $sprint, array $issuesData): void
+    private function syncIssuesForIteration(Repository $repository, Sprint $sprint, array $issuesData, string $token): void
     {
         foreach ($issuesData as $data) {
-            $existingIssue = Issue::where('repository_id', $repository->id)
+            // Issue の実際の所属リポジトリを特定する
+            // GraphQL レスポンスにリポジトリ情報がある場合はそちらを優先する
+            $targetRepository = $this->resolveRepository($repository, $data['repo_owner'], $data['repo_name']);
+
+            $existingIssue = Issue::where('repository_id', $targetRepository->id)
                 ->where('github_issue_number', $data['number'])
                 ->first();
 
@@ -198,12 +207,12 @@ class GitHubSyncService
             ];
 
             if ($existingIssue) {
-                // story_points / exclude_velocity は既存値を保護する
+                // story_points / exclude_velocity / estimated_hours / actual_hours は既存値を保護する
                 $existingIssue->update($syncData);
                 $issueModel = $existingIssue;
             } else {
                 $issueModel = Issue::create(array_merge($syncData, [
-                    'repository_id' => $repository->id,
+                    'repository_id' => $targetRepository->id,
                     'github_issue_number' => $data['number'],
                 ]));
             }
@@ -212,6 +221,9 @@ class GitHubSyncService
                 array_map(fn ($name) => ['name' => $name], $data['labels'])
             );
             $issueModel->labels()->sync($labelIds);
+
+            // サブイシューを同期する
+            $this->syncSubIssues($issueModel, $targetRepository, $token);
         }
     }
 
@@ -254,7 +266,8 @@ class GitHubSyncService
         Repository $repository,
         Milestone $milestone,
         int $milestoneNumber,
-        PendingRequest $client
+        PendingRequest $client,
+        string $token
     ): void {
         $sprint = Sprint::where('milestone_id', $milestone->id)->first();
 
@@ -289,7 +302,7 @@ class GitHubSyncService
             ];
 
             if ($existingIssue) {
-                // story_points / exclude_velocity は既存値を保護する
+                // story_points / exclude_velocity / estimated_hours / actual_hours は既存値を保護する
                 $existingIssue->update($syncData);
                 $issueModel = $existingIssue;
             } else {
@@ -302,7 +315,89 @@ class GitHubSyncService
             // issue_labels を更新
             $labelIds = $this->resolveLabelIds($data['labels'] ?? []);
             $issueModel->labels()->sync($labelIds);
+
+            // サブイシューを同期する
+            $this->syncSubIssues($issueModel, $repository, $token);
         }
+    }
+
+    /**
+     * 親 Issue のサブイシューを同期する。
+     *
+     * GitHub Sub-issues API（Public Preview）を使用して取得し、
+     * parent_issue_id を設定して同リポジトリに登録する。
+     * サブイシューは同一リポジトリのみ（GitHub 仕様）のため、
+     * repository_id は親 Issue のものを引き継ぐ。
+     *
+     * estimated_hours / actual_hours はユーザーが手動設定するため上書きしない。
+     * 新規サブイシューの exclude_velocity はデフォルト true（タスクはベロシティ対象外）。
+     */
+    private function syncSubIssues(Issue $parentIssue, Repository $repository, string $token): void
+    {
+        // Node ID が取得できない場合はスキップ（古いデータや権限不足の場合）
+        $nodeId = $this->graphql->fetchIssueNodeId(
+            $repository->owner,
+            $repository->name,
+            $parentIssue->github_issue_number,
+            $token
+        );
+
+        if ($nodeId === null) {
+            return;
+        }
+
+        try {
+            $subIssuesData = $this->graphql->fetchSubIssues($nodeId, $token);
+        } catch (\RuntimeException $e) {
+            // Sub-issues API が未対応環境（Public Preview 未有効）の場合はスキップ
+            return;
+        }
+
+        foreach ($subIssuesData as $data) {
+            $existingIssue = Issue::where('repository_id', $repository->id)
+                ->where('github_issue_number', $data['number'])
+                ->first();
+
+            $syncData = [
+                'title' => $data['title'],
+                'state' => $data['state'],
+                'closed_at' => $data['closed_at'] ? Carbon::parse($data['closed_at']) : null,
+                'assignee_login' => $data['assignee'],
+                'parent_issue_id' => $parentIssue->id,
+                'synced_at' => now(),
+            ];
+
+            if ($existingIssue) {
+                // estimated_hours / actual_hours / exclude_velocity は既存値を保護する
+                $existingIssue->update($syncData);
+            } else {
+                Issue::create(array_merge($syncData, [
+                    'repository_id' => $repository->id,
+                    'github_issue_number' => $data['number'],
+                    // 新規タスクはデフォルトでベロシティ除外（Story のみをベロシティ対象とする）
+                    'exclude_velocity' => true,
+                ]));
+            }
+        }
+    }
+
+    /**
+     * GraphQL レスポンスのリポジトリ情報からローカルの Repository モデルを解決する。
+     *
+     * 複数リポジトリが同一プロジェクトに紐付く場合に Issue を正しいリポジトリに登録するために使用する。
+     * リポジトリ情報がない場合や見つからない場合は引数の $fallback を返す。
+     */
+    private function resolveRepository(Repository $fallback, ?string $repoOwner, ?string $repoName): Repository
+    {
+        if ($repoOwner === null || $repoName === null) {
+            return $fallback;
+        }
+
+        $found = Repository::where('owner', $repoOwner)
+            ->where('name', $repoName)
+            ->first();
+
+        return $found ?? $fallback;
     }
 
     /**

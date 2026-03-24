@@ -52,6 +52,8 @@ function iterationGraphQLData(): array
                     'closed_at' => null,
                     'assignee' => 'alice',
                     'labels' => ['bug'],
+                    'repo_owner' => 'myorg',
+                    'repo_name' => 'myrepo',
                 ],
             ],
         ],
@@ -76,6 +78,8 @@ test('github_project_number が設定されている場合、Iteration をスプ
         $mock->shouldReceive('fetchProjectIterationsWithItems')
             ->once()
             ->andReturn(iterationGraphQLData());
+        // サブイシュー同期: node ID 取得なし（既存テストへの影響を避けるため null を返す）
+        $mock->shouldReceive('fetchIssueNodeId')->andReturn(null);
     });
 
     app(GitHubSyncService::class)->syncAll('test-token');
@@ -147,6 +151,8 @@ test('既存スプリントの start_date と working_days は上書きされな
         $mock->shouldReceive('fetchProjectIterationsWithItems')
             ->once()
             ->andReturn(iterationGraphQLData());
+        // サブイシュー同期: node ID 取得なし（既存テストへの影響を避けるため null を返す）
+        $mock->shouldReceive('fetchIssueNodeId')->andReturn(null);
     });
 
     app(GitHubSyncService::class)->syncAll('test-token');

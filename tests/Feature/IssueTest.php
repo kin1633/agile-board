@@ -51,6 +51,76 @@ test('存在しないエピック ID は拒否される', function () {
         ->assertSessionHasErrors('epic_id');
 });
 
+test('Issue の予定工数を更新できる', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $issue = Issue::factory()->for($repo)->create(['estimated_hours' => null]);
+
+    $this->actingAs($user)
+        ->patch(route('issues.update', $issue), ['estimated_hours' => 8.5])
+        ->assertRedirect();
+
+    expect((float) $issue->fresh()->estimated_hours)->toBe(8.5);
+});
+
+test('Issue の実績工数を更新できる', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $issue = Issue::factory()->for($repo)->create(['actual_hours' => null]);
+
+    $this->actingAs($user)
+        ->patch(route('issues.update', $issue), ['actual_hours' => 6.0])
+        ->assertRedirect();
+
+    expect((float) $issue->fresh()->actual_hours)->toBe(6.0);
+});
+
+test('予定工数と実績工数を同時に更新できる', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $issue = Issue::factory()->for($repo)->create(['estimated_hours' => null, 'actual_hours' => null]);
+
+    $this->actingAs($user)
+        ->patch(route('issues.update', $issue), ['estimated_hours' => 4.0, 'actual_hours' => 3.5])
+        ->assertRedirect();
+
+    $fresh = $issue->fresh();
+    expect((float) $fresh->estimated_hours)->toBe(4.0);
+    expect((float) $fresh->actual_hours)->toBe(3.5);
+});
+
+test('予定工数に null を指定してリセットできる', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $issue = Issue::factory()->for($repo)->create(['estimated_hours' => 5.0]);
+
+    $this->actingAs($user)
+        ->patch(route('issues.update', $issue), ['estimated_hours' => null])
+        ->assertRedirect();
+
+    expect($issue->fresh()->estimated_hours)->toBeNull();
+});
+
+test('工数に負の値は拒否される', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $issue = Issue::factory()->for($repo)->create();
+
+    $this->actingAs($user)
+        ->patch(route('issues.update', $issue), ['estimated_hours' => -1.0])
+        ->assertSessionHasErrors('estimated_hours');
+});
+
+test('工数に 9999.99 を超える値は拒否される', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $issue = Issue::factory()->for($repo)->create();
+
+    $this->actingAs($user)
+        ->patch(route('issues.update', $issue), ['estimated_hours' => 10000.0])
+        ->assertSessionHasErrors('estimated_hours');
+});
+
 test('スプリント詳細ページに epics が渡される', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();

@@ -7,16 +7,21 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * GitHub Issue を表すモデル。
  *
- * story_points と exclude_velocity はユーザーが手動で設定する項目のため、
- * GitHub 同期（GitHubSyncService）で上書きしてはならない。
+ * 以下の項目はユーザーが手動で設定するため、GitHub 同期（GitHubSyncService）で上書きしてはならない:
+ * - story_points: ストーリーポイント
+ * - exclude_velocity: ベロシティ除外フラグ
+ * - estimated_hours: 予定工数（タスクレベルの工数管理）
+ * - actual_hours: 実績工数（タスクレベルの工数管理）
  */
 #[Fillable([
-    'repository_id', 'sprint_id', 'epic_id', 'github_issue_number',
-    'title', 'state', 'closed_at', 'assignee_login', 'story_points', 'exclude_velocity', 'synced_at',
+    'repository_id', 'sprint_id', 'epic_id', 'parent_issue_id', 'github_issue_number',
+    'title', 'state', 'closed_at', 'assignee_login', 'story_points', 'exclude_velocity',
+    'estimated_hours', 'actual_hours', 'synced_at',
 ])]
 class Issue extends Model
 {
@@ -28,12 +33,26 @@ class Issue extends Model
             'exclude_velocity' => 'boolean',
             'closed_at' => 'datetime',
             'synced_at' => 'datetime',
+            'estimated_hours' => 'decimal:2',
+            'actual_hours' => 'decimal:2',
         ];
     }
 
     public function repository(): BelongsTo
     {
         return $this->belongsTo(Repository::class);
+    }
+
+    /** 親イシュー（このイシューがサブイシューの場合） */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Issue::class, 'parent_issue_id');
+    }
+
+    /** サブイシュー一覧（このイシューが親の場合） */
+    public function subIssues(): HasMany
+    {
+        return $this->hasMany(Issue::class, 'parent_issue_id');
     }
 
     public function sprint(): BelongsTo
