@@ -80,8 +80,63 @@ test('リポジトリの有効・無効を切り替えられる', function () {
     $repo = Repository::factory()->create(['active' => true]);
 
     $this->actingAs($user)
-        ->patch(route('settings.repositories.update', $repo), ['active' => false])
+        ->patch(route('settings.repositories.update', $repo), [
+            'active' => false,
+            'github_project_number' => null,
+        ])
         ->assertRedirect(route('settings.repositories'));
 
     expect($repo->fresh()->active)->toBeFalse();
+});
+
+test('github_project_number を保存・更新できる', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create(['active' => true, 'github_project_number' => null]);
+
+    $this->actingAs($user)
+        ->patch(route('settings.repositories.update', $repo), [
+            'active' => true,
+            'github_project_number' => 3,
+        ])
+        ->assertRedirect(route('settings.repositories'));
+
+    expect($repo->fresh()->github_project_number)->toBe(3);
+});
+
+test('github_project_number を null に更新できる', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create(['active' => true, 'github_project_number' => 5]);
+
+    $this->actingAs($user)
+        ->patch(route('settings.repositories.update', $repo), [
+            'active' => true,
+            'github_project_number' => null,
+        ])
+        ->assertRedirect(route('settings.repositories'));
+
+    expect($repo->fresh()->github_project_number)->toBeNull();
+});
+
+test('github_project_number に負の値は使用できない', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create(['active' => true]);
+
+    $this->actingAs($user)
+        ->patch(route('settings.repositories.update', $repo), [
+            'active' => true,
+            'github_project_number' => -1,
+        ])
+        ->assertSessionHasErrors(['github_project_number']);
+});
+
+test('リポジトリ一覧に github_project_number が含まれる', function () {
+    $user = User::factory()->create();
+    Repository::factory()->create(['full_name' => 'org/repo', 'github_project_number' => 7]);
+
+    $this->actingAs($user)
+        ->get(route('settings.repositories'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('repositories.0.github_project_number', 7)
+        );
 });

@@ -23,6 +23,7 @@ class RepositoryController extends Controller
                 'name' => $r->name,
                 'full_name' => $r->full_name,
                 'active' => $r->active,
+                'github_project_number' => $r->github_project_number,
                 'synced_at' => $r->synced_at?->toDateTimeString(),
             ]);
 
@@ -60,6 +61,8 @@ class RepositoryController extends Controller
     {
         $validated = $request->validate([
             'active' => ['required', 'boolean'],
+            // GitHub Projects (ProjectV2) の番号。設定済みの場合は Iteration をスプリントとして同期する
+            'github_project_number' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $repository->update($validated);

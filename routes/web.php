@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EpicController;
 use App\Http\Controllers\IssueController;
+use App\Http\Controllers\MilestoneController;
 use App\Http\Controllers\RetrospectiveController;
 use App\Http\Controllers\SprintController;
 use App\Http\Controllers\SyncController;
@@ -32,6 +33,9 @@ Route::middleware(['auth'])->group(function () {
     // スプリント
     Route::get('/sprints', [SprintController::class, 'index'])->name('sprints.index');
     Route::get('/sprints/{sprint}', [SprintController::class, 'show'])->name('sprints.show');
+
+    // マイルストーン
+    Route::get('/milestones', [MilestoneController::class, 'index'])->name('milestones.index');
 
     // エピック
     Route::get('/epics', [EpicController::class, 'index'])->name('epics.index');

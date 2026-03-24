@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import {
     BookOpen,
     ClipboardList,
+    Flag,
     FolderGit2,
     LayoutGrid,
     Layers,
@@ -22,6 +23,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import milestones from '@/routes/milestones';
 import sprints from '@/routes/sprints';
 import epics from '@/routes/epics';
 import retrospectives from '@/routes/retrospectives';
@@ -38,6 +40,11 @@ const mainNavItems: NavItem[] = [
         title: 'スプリント',
         href: sprints.index(),
         icon: ClipboardList,
+    },
+    {
+        title: 'マイルストーン',
+        href: milestones.index().url,
+        icon: Flag,
     },
     {
         title: 'エピック（案件）',

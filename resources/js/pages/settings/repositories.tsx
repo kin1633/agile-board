@@ -16,6 +16,7 @@ interface RepositoryRow {
     name: string;
     full_name: string;
     active: boolean;
+    github_project_number: number | null;
     synced_at: string | null;
 }
 
@@ -33,6 +34,12 @@ export default function RepositoriesSettings({ repositories }: Props) {
     const [showForm, setShowForm] = useState(false);
     const [githubRepos, setGithubRepos] = useState<GitHubRepo[]>([]);
     const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
+    /** Project Number 編集中のリポジトリ ID */
+    const [editingProjectRepo, setEditingProjectRepo] = useState<number | null>(
+        null,
+    );
+    /** 編集中の Project Number 値（文字列で管理してクリア可能にする） */
+    const [editingProjectNumber, setEditingProjectNumber] = useState('');
 
     const { data, setData, post, processing, errors, reset } = useForm({
         owner: '',
@@ -53,7 +60,30 @@ export default function RepositoriesSettings({ repositories }: Props) {
     const toggleActive = (repo: RepositoryRow) => {
         router.patch(settingsRepositories.update({ repository: repo.id }).url, {
             active: !repo.active,
+            github_project_number: repo.github_project_number,
         });
+    };
+
+    const startEditingProjectNumber = (repo: RepositoryRow) => {
+        setEditingProjectRepo(repo.id);
+        setEditingProjectNumber(repo.github_project_number?.toString() ?? '');
+    };
+
+    const saveProjectNumber = (repo: RepositoryRow) => {
+        const parsed =
+            editingProjectNumber === ''
+                ? null
+                : parseInt(editingProjectNumber, 10);
+        router.patch(
+            settingsRepositories.update({ repository: repo.id }).url,
+            {
+                active: repo.active,
+                github_project_number: parsed,
+            },
+            {
+                onSuccess: () => setEditingProjectRepo(null),
+            },
+        );
     };
 
     /** GitHubからリポジトリ候補を取得してドロップダウンに表示する */
@@ -209,7 +239,7 @@ export default function RepositoriesSettings({ repositories }: Props) {
                             {repositories.map((repo) => (
                                 <li
                                     key={repo.id}
-                                    className="flex items-center justify-between px-6 py-4"
+                                    className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
                                 >
                                     <div>
                                         <p className="font-medium">
@@ -220,6 +250,75 @@ export default function RepositoriesSettings({ repositories }: Props) {
                                                 ? `最終同期: ${repo.synced_at}`
                                                 : '未同期'}
                                         </p>
+                                        {/* Project Number インライン編集 */}
+                                        <div className="mt-1 flex items-center gap-2">
+                                            <span className="text-xs text-muted-foreground">
+                                                Project #:
+                                            </span>
+                                            {editingProjectRepo === repo.id ? (
+                                                <>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={
+                                                            editingProjectNumber
+                                                        }
+                                                        onChange={(e) =>
+                                                            setEditingProjectNumber(
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        placeholder="例: 1"
+                                                        className="w-20 rounded border border-sidebar-border/70 bg-background px-2 py-0.5 text-xs"
+                                                    />
+                                                    <button
+                                                        onClick={() =>
+                                                            saveProjectNumber(
+                                                                repo,
+                                                            )
+                                                        }
+                                                        className="rounded px-2 py-0.5 text-xs font-medium text-primary hover:underline"
+                                                    >
+                                                        保存
+                                                    </button>
+                                                    <button
+                                                        onClick={() =>
+                                                            setEditingProjectRepo(
+                                                                null,
+                                                            )
+                                                        }
+                                                        className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:underline"
+                                                    >
+                                                        キャンセル
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {repo.github_project_number !=
+                                                    null ? (
+                                                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                                            {
+                                                                repo.github_project_number
+                                                            }
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            未設定
+                                                        </span>
+                                                    )}
+                                                    <button
+                                                        onClick={() =>
+                                                            startEditingProjectNumber(
+                                                                repo,
+                                                            )
+                                                        }
+                                                        className="text-xs text-muted-foreground hover:underline"
+                                                    >
+                                                        編集
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span

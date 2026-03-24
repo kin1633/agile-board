@@ -19,11 +19,15 @@ use Illuminate\Http\Client\PendingRequest;
  * - issues.exclude_velocity
  * - sprints.start_date（既存レコードのみ）
  * - sprints.working_days（既存レコードのみ）
+ *
+ * github_project_number が設定されている場合は ProjectV2 の Iteration をスプリントとして同期する。
+ * 未設定の場合は従来通りマイルストーンをスプリントとして同期する（後方互換性維持）。
  */
 class GitHubSyncService
 {
     public function __construct(
         private readonly Http $http,
+        private readonly GitHubGraphQLClient $graphql,
     ) {}
 
     /**
@@ -67,6 +71,8 @@ class GitHubSyncService
 
     /**
      * 指定リポジトリのマイルストーン・Issue・ラベルを同期する。
+     *
+     * github_project_number が設定されている場合は Iteration も同期する。
      */
     private function syncRepository(Repository $repository, string $githubToken): void
     {
@@ -75,11 +81,20 @@ class GitHubSyncService
         $this->syncMilestones($repository, $client);
         $this->syncLabels($repository, $client);
 
+        // Project Number が設定されている場合のみ Iteration ベースのスプリント同期を実行
+        if ($repository->github_project_number !== null) {
+            $this->syncProjectIterations($repository, $githubToken);
+        }
+
         $repository->update(['synced_at' => now()]);
     }
 
     /**
-     * マイルストーンとスプリントを同期する。
+     * マイルストーンを同期する。
+     *
+     * github_project_number が設定されている場合はマイルストーンデータのみ保存し、
+     * スプリントと Issue の紐付けは Iteration 同期（syncProjectIterations）に委ねる。
+     * 未設定の場合は従来通りマイルストーンをスプリントとして扱う。
      */
     private function syncMilestones(Repository $repository, PendingRequest $client): void
     {
@@ -103,8 +118,100 @@ class GitHubSyncService
                 ]
             );
 
+            // Iteration モードでは Sprint/Issue の紐付けはスキップ
+            if ($repository->github_project_number !== null) {
+                continue;
+            }
+
             $this->syncSprintForMilestone($milestone, $data);
             $this->syncIssuesForMilestone($repository, $milestone, $data['number'], $client);
+        }
+    }
+
+    /**
+     * ProjectV2 の Iteration をスプリントとして同期し、各 Issue を紐付ける。
+     *
+     * 新規スプリント: start_date = Iteration の startDate、end_date = startDate + duration - 1日
+     * 既存スプリント: start_date / working_days は保護する
+     */
+    private function syncProjectIterations(Repository $repository, string $token): void
+    {
+        $result = $this->graphql->fetchProjectIterationsWithItems(
+            $repository->owner,
+            $repository->name,
+            $repository->github_project_number,
+            $token
+        );
+
+        foreach ($result['iterations'] as $iteration) {
+            $startDate = Carbon::parse($iteration['startDate']);
+            // duration は週単位（GitHub の仕様）
+            $endDate = $startDate->copy()->addWeeks($iteration['duration'])->subDay();
+            $durationDays = $startDate->diffInDays($endDate) + 1;
+
+            $existingSprint = Sprint::where('github_iteration_id', $iteration['id'])->first();
+
+            if ($existingSprint) {
+                // 既存スプリント: start_date / working_days は保護する
+                $existingSprint->update([
+                    'title' => $iteration['title'],
+                    'end_date' => $endDate->toDateString(),
+                    'iteration_duration_days' => $durationDays,
+                ]);
+                $sprint = $existingSprint;
+            } else {
+                $sprint = Sprint::create([
+                    'github_iteration_id' => $iteration['id'],
+                    'title' => $iteration['title'],
+                    'start_date' => $startDate->toDateString(),
+                    'end_date' => $endDate->toDateString(),
+                    'working_days' => 5,
+                    'iteration_duration_days' => $durationDays,
+                    'state' => 'open',
+                ]);
+            }
+
+            $issues = $result['issuesByIteration'][$iteration['id']] ?? [];
+            $this->syncIssuesForIteration($repository, $sprint, $issues);
+        }
+    }
+
+    /**
+     * Iteration に属する Issue を同期する。
+     *
+     * @param  array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, labels: array<int, string>}>  $issuesData
+     */
+    private function syncIssuesForIteration(Repository $repository, Sprint $sprint, array $issuesData): void
+    {
+        foreach ($issuesData as $data) {
+            $existingIssue = Issue::where('repository_id', $repository->id)
+                ->where('github_issue_number', $data['number'])
+                ->first();
+
+            $syncData = [
+                'title' => $data['title'],
+                'state' => $data['state'],
+                'closed_at' => $data['closed_at'] ? Carbon::parse($data['closed_at']) : null,
+                'assignee_login' => $data['assignee'],
+                'sprint_id' => $sprint->id,
+                'synced_at' => now(),
+            ];
+
+            if ($existingIssue) {
+                // story_points / exclude_velocity は既存値を保護する
+                $existingIssue->update($syncData);
+                $issueModel = $existingIssue;
+            } else {
+                $issueModel = Issue::create(array_merge($syncData, [
+                    'repository_id' => $repository->id,
+                    'github_issue_number' => $data['number'],
+                ]));
+            }
+
+            $labelIds = $this->resolveLabelIds(
+                array_map(fn ($name) => ['name' => $name], $data['labels'])
+            );
+            $issueModel->labels()->sync($labelIds);
         }
     }
 
