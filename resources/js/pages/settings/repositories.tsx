@@ -1,4 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
+import { ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import settings from '@/routes/settings';
@@ -230,6 +231,15 @@ export default function RepositoriesSettings({ repositories }: Props) {
                                         >
                                             {repo.active ? '有効' : '無効'}
                                         </span>
+                                        <a
+                                            href={`https://github.com/${repo.full_name}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 rounded-lg border border-sidebar-border/70 px-3 py-1 text-xs hover:bg-muted/50"
+                                        >
+                                            <ExternalLink className="size-3" />
+                                            GitHub
+                                        </a>
                                         <button
                                             onClick={() => toggleActive(repo)}
                                             className="rounded-lg border border-sidebar-border/70 px-3 py-1 text-xs hover:bg-muted/50"
