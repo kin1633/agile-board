@@ -1,4 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
+import { ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import settings from '@/routes/settings';
@@ -18,12 +19,20 @@ interface RepositoryRow {
     synced_at: string | null;
 }
 
+interface GitHubRepo {
+    full_name: string;
+    owner: string;
+    name: string;
+}
+
 interface Props {
     repositories: RepositoryRow[];
 }
 
 export default function RepositoriesSettings({ repositories }: Props) {
     const [showForm, setShowForm] = useState(false);
+    const [githubRepos, setGithubRepos] = useState<GitHubRepo[]>([]);
+    const [loadingGithubRepos, setLoadingGithubRepos] = useState(false);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         owner: '',
@@ -36,6 +45,7 @@ export default function RepositoriesSettings({ repositories }: Props) {
             onSuccess: () => {
                 setShowForm(false);
                 reset();
+                setGithubRepos([]);
             },
         });
     };
@@ -46,6 +56,34 @@ export default function RepositoriesSettings({ repositories }: Props) {
         });
     };
 
+    /** GitHubからリポジトリ候補を取得してドロップダウンに表示する */
+    const loadGithubRepos = async () => {
+        setLoadingGithubRepos(true);
+        try {
+            const res = await fetch('/settings/repositories/github', {
+                headers: { Accept: 'application/json' },
+            });
+            const data: GitHubRepo[] = await res.json();
+            setGithubRepos(data);
+        } catch {
+            // 取得失敗時は手動入力にフォールバック
+        } finally {
+            setLoadingGithubRepos(false);
+        }
+    };
+
+    const handleOpenForm = () => {
+        setShowForm(true);
+        loadGithubRepos();
+    };
+
+    const handleGithubSelect = (fullName: string) => {
+        const repo = githubRepos.find((r) => r.full_name === fullName);
+        if (repo) {
+            setData({ owner: repo.owner, name: repo.name });
+        }
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="リポジトリ設定" />
@@ -53,7 +91,7 @@ export default function RepositoriesSettings({ repositories }: Props) {
                 <div className="flex items-center justify-between">
                     <h1 className="text-xl font-semibold">リポジトリ管理</h1>
                     <button
-                        onClick={() => setShowForm(!showForm)}
+                        onClick={handleOpenForm}
                         className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
                         + リポジトリを追加
@@ -69,6 +107,37 @@ export default function RepositoriesSettings({ repositories }: Props) {
                             onSubmit={handleSubmit}
                             className="flex flex-col gap-4"
                         >
+                            {/* GitHub候補ドロップダウン */}
+                            <div>
+                                <label className="mb-1 block text-xs font-medium">
+                                    GitHub から選択
+                                </label>
+                                <select
+                                    onChange={(e) =>
+                                        handleGithubSelect(e.target.value)
+                                    }
+                                    defaultValue=""
+                                    disabled={loadingGithubRepos}
+                                    className="w-full rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm disabled:opacity-50"
+                                >
+                                    <option value="" disabled>
+                                        {loadingGithubRepos
+                                            ? '読み込み中...'
+                                            : githubRepos.length === 0
+                                              ? '取得できませんでした（手動入力してください）'
+                                              : 'リポジトリを選択...'}
+                                    </option>
+                                    {githubRepos.map((repo) => (
+                                        <option
+                                            key={repo.full_name}
+                                            value={repo.full_name}
+                                        >
+                                            {repo.full_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div className="flex gap-4">
                                 <div className="flex-1">
                                     <label className="mb-1 block text-xs font-medium">
@@ -121,7 +190,10 @@ export default function RepositoriesSettings({ repositories }: Props) {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setShowForm(false)}
+                                    onClick={() => {
+                                        setShowForm(false);
+                                        setGithubRepos([]);
+                                    }}
                                     className="rounded-lg border border-sidebar-border/70 px-4 py-2 text-sm hover:bg-muted/50"
                                 >
                                     キャンセル
@@ -159,6 +231,15 @@ export default function RepositoriesSettings({ repositories }: Props) {
                                         >
                                             {repo.active ? '有効' : '無効'}
                                         </span>
+                                        <a
+                                            href={`https://github.com/${repo.full_name}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 rounded-lg border border-sidebar-border/70 px-3 py-1 text-xs hover:bg-muted/50"
+                                        >
+                                            <ExternalLink className="size-3" />
+                                            GitHub
+                                        </a>
                                         <button
                                             onClick={() => toggleActive(repo)}
                                             className="rounded-lg border border-sidebar-border/70 px-3 py-1 text-xs hover:bg-muted/50"

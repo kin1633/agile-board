@@ -5,7 +5,7 @@ import epicRoutes from '@/routes/epics';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'エピック', href: epicRoutes.index().url },
+    { title: 'エピック（案件）', href: epicRoutes.index().url },
 ];
 
 interface EpicRow {
@@ -128,16 +128,18 @@ export default function EpicsIndex({ epics, estimation }: Props) {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="エピック" />
+            <Head title="エピック（案件）" />
             <div className="flex flex-col gap-6 p-6">
                 {/* ヘッダー */}
                 <div className="flex items-center justify-between">
-                    <h1 className="text-xl font-semibold">エピック一覧</h1>
+                    <h1 className="text-xl font-semibold">
+                        エピック（案件）一覧
+                    </h1>
                     <button
                         onClick={openCreate}
                         className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
-                        + 新規エピック
+                        + 新規エピック（案件）
                     </button>
                 </div>
 
@@ -166,11 +168,13 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                     </div>
                 </div>
 
-                {/* エピック作成・編集フォーム */}
+                {/* エピック（案件）作成・編集フォーム */}
                 {showForm && (
                     <div className="rounded-xl border border-sidebar-border/70 bg-card p-6">
                         <h2 className="mb-4 text-sm font-semibold">
-                            {editingEpic ? 'エピックを編集' : '新規エピック'}
+                            {editingEpic
+                                ? 'エピック（案件）を編集'
+                                : '新規エピック（案件）'}
                         </h2>
                         <form
                             onSubmit={handleSubmit}
@@ -244,7 +248,7 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                     </div>
                 )}
 
-                {/* エピック一覧 */}
+                {/* エピック（案件）一覧 */}
                 <div className="rounded-xl border border-sidebar-border/70 bg-card">
                     {epics.length > 0 ? (
                         <ul className="divide-y divide-sidebar-border/50">
@@ -360,7 +364,7 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                         </ul>
                     ) : (
                         <p className="px-6 py-4 text-sm text-muted-foreground">
-                            エピックがありません
+                            エピック（案件）がありません
                         </p>
                     )}
                 </div>

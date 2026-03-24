@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Epic;
 use App\Models\Sprint;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -48,6 +49,9 @@ class SprintController extends Controller
         $burndownData = $this->buildBurndownData($sprint);
         $assigneeWorkload = $this->buildAssigneeWorkload($sprint);
 
+        // エピック選択UIで使用するため全エピックをIDとタイトルのみ渡す
+        $epics = Epic::orderBy('title')->get(['id', 'title']);
+
         return Inertia::render('sprints/show', [
             'sprint' => [
                 'id' => $sprint->id,
@@ -62,6 +66,7 @@ class SprintController extends Controller
             'issues' => $issues,
             'burndownData' => $burndownData,
             'assigneeWorkload' => $assigneeWorkload,
+            'epics' => $epics,
         ]);
     }
 

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\Repository;
+use App\Services\GitHubSyncService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -25,6 +27,16 @@ class RepositoryController extends Controller
             ]);
 
         return Inertia::render('settings/repositories', compact('repositories'));
+    }
+
+    /**
+     * ログインユーザーの GitHub リポジトリ一覧を返す（追加候補として使用）。
+     */
+    public function githubRepositories(Request $request, GitHubSyncService $syncService): JsonResponse
+    {
+        $repos = $syncService->listUserRepositories($request->user()->github_token);
+
+        return response()->json($repos);
     }
 
     public function store(Request $request): RedirectResponse

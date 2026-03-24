@@ -2,6 +2,7 @@
 
 use App\Models\Repository;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 
 test('未認証ユーザーはリポジトリ設定にアクセスできない', function () {
     $this->get(route('settings.repositories'))->assertRedirect(route('login'));
@@ -41,6 +42,37 @@ test('リポジトリ追加時にバリデーションが動作する', function
     $this->actingAs($user)
         ->post(route('settings.repositories.store'), ['owner' => '', 'name' => ''])
         ->assertSessionHasErrors(['owner', 'name']);
+});
+
+test('GitHub からリポジトリ候補を取得できる', function () {
+    $user = User::factory()->create(['github_token' => 'test-token']);
+
+    Http::fake([
+        'api.github.com/user/repos*' => Http::response([
+            [
+                'full_name' => 'myorg/repo-a',
+                'owner' => ['login' => 'myorg'],
+                'name' => 'repo-a',
+            ],
+            [
+                'full_name' => 'myorg/repo-b',
+                'owner' => ['login' => 'myorg'],
+                'name' => 'repo-b',
+            ],
+        ]),
+    ]);
+
+    $this->actingAs($user)
+        ->getJson(route('settings.repositories.github'))
+        ->assertOk()
+        ->assertJsonCount(2)
+        ->assertJsonFragment(['full_name' => 'myorg/repo-a']);
+});
+
+test('未認証ユーザーは GitHub リポジトリ候補を取得できない', function () {
+    // JSON リクエストでは auth ミドルウェアが 401 を返す
+    $this->getJson(route('settings.repositories.github'))
+        ->assertUnauthorized();
 });
 
 test('リポジトリの有効・無効を切り替えられる', function () {

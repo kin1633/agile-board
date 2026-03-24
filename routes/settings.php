@@ -12,6 +12,8 @@ Route::middleware(['auth'])->group(function () {
 
     // リポジトリ管理
     Route::get('settings/repositories', [RepositoryController::class, 'index'])->name('settings.repositories');
+    // GitHub候補取得は {repository} より先に定義しないとルートが衝突する
+    Route::get('settings/repositories/github', [RepositoryController::class, 'githubRepositories'])->name('settings.repositories.github');
     Route::post('settings/repositories', [RepositoryController::class, 'store'])->name('settings.repositories.store');
     Route::patch('settings/repositories/{repository}', [RepositoryController::class, 'update'])->name('settings.repositories.update');
 
