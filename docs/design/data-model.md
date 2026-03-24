@@ -7,15 +7,16 @@ users
   id, name, email, github_id, github_token, avatar_url
 
 repositories
-  id, owner, name, full_name, active, synced_at
+  id, owner, name, full_name, active, github_project_number, synced_at
 
 milestones
   id, repository_id → repositories
   github_milestone_id, title, due_on, state, synced_at
 
 sprints
-  id, milestone_id → milestones
-  title, start_date*, working_days*, end_date, state
+  id, milestone_id → milestones (nullable)
+  github_iteration_id (nullable, unique)
+  title, start_date*, working_days*, end_date, iteration_duration_days, state
 
 epics
   id, title, description, status
@@ -50,16 +51,26 @@ members
 
 ## 主要テーブル詳細
 
+### repositories
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| github_project_number | int\|null | GitHub Projects v2 のプロジェクト番号。設定すると Iteration モードで同期 |
+
 ### sprints
 
 | カラム | 型 | 説明 |
 |---|---|---|
-| milestone_id | FK | GitHub マイルストーンとの紐付け |
-| title | string | スプリント名（マイルストーンのタイトル） |
+| milestone_id | FK\|null | Milestone モード時の紐付け。Iteration モードでは NULL |
+| github_iteration_id | string\|null | Iteration モード時の GitHub Iteration ID（一意） |
+| title | string | スプリント名 |
 | start_date | date | **手動設定**。スプリント開始日（バーンダウン計算に使用） |
-| end_date | date | マイルストーンの期限日（同期で更新） |
+| end_date | date | スプリント終了日（同期で更新） |
 | working_days | int | **手動設定**。稼働日数（ベロシティ計算の分母） |
+| iteration_duration_days | int\|null | Iteration の期間（日数）。GitHub の duration（週）から換算 |
 | state | string | `open` / `closed` |
+
+> `milestone_id` と `github_iteration_id` はどちらか一方のみ持ちます。両方 NULL になることはありません。
 
 ### issues
 
@@ -76,6 +87,23 @@ members
 | カラム | 型 | 説明 |
 |---|---|---|
 | exclude_velocity | boolean | このラベルを持つ Issue をベロシティから除外するか |
+
+---
+
+## スプリントの2つのモード
+
+### Milestone モード（`github_project_number` 未設定）
+
+```
+repositories ─→ milestones ─→ sprints ─→ issues
+```
+
+### Iteration モード（`github_project_number` 設定済み）
+
+```
+repositories ─→ sprints（github_iteration_id で識別）─→ issues
+              └─→ milestones（独立表示、スプリントとは連携しない）
+```
 
 ---
 
