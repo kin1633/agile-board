@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\GeneralController;
 use App\Http\Controllers\Settings\LabelController;
 use App\Http\Controllers\Settings\MemberController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -9,6 +10,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', '/settings/repositories');
+
+    // 一般設定（1人日の基準時間など）
+    Route::get('settings/general', [GeneralController::class, 'index'])->name('settings.general');
+    Route::patch('settings/general', [GeneralController::class, 'update'])->name('settings.general.update');
 
     // リポジトリ管理
     Route::get('settings/repositories', [RepositoryController::class, 'index'])->name('settings.repositories');

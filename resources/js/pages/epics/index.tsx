@@ -1,7 +1,7 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
-import epicRoutes from '@/routes/epics';
+import epicRoutes, { exportMethod as exportRoute } from '@/routes/epics';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -77,9 +77,32 @@ interface EpicFormData {
     status: string;
 }
 
+/** 当月の開始日・終了日を YYYY-MM-DD 形式で返す */
+function currentMonthRange(): { from: string; to: string } {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+        from: from.toISOString().slice(0, 10),
+        to: to.toISOString().slice(0, 10),
+    };
+}
+
 export default function EpicsIndex({ epics, estimation }: Props) {
     const [showForm, setShowForm] = useState(false);
     const [editingEpic, setEditingEpic] = useState<EpicRow | null>(null);
+
+    const defaultRange = currentMonthRange();
+    const [exportFrom, setExportFrom] = useState(defaultRange.from);
+    const [exportTo, setExportTo] = useState(defaultRange.to);
+
+    /** CSV エクスポートは Inertia ではなく通常ナビゲーションでファイル DL する */
+    const handleExport = () => {
+        const url = exportRoute({
+            query: { from: exportFrom, to: exportTo },
+        }).url;
+        window.location.href = url;
+    };
 
     const { data, setData, post, put, processing, errors, reset } =
         useForm<EpicFormData>({
@@ -135,16 +158,40 @@ export default function EpicsIndex({ epics, estimation }: Props) {
             <Head title="エピック（案件）" />
             <div className="flex flex-col gap-6 p-6">
                 {/* ヘッダー */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                     <h1 className="text-xl font-semibold">
                         エピック（案件）一覧
                     </h1>
-                    <button
-                        onClick={openCreate}
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                    >
-                        + 新規エピック（案件）
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* CSV エクスポート: 期間指定 + ダウンロードボタン */}
+                        <div className="flex items-center gap-1 text-sm">
+                            <input
+                                type="date"
+                                value={exportFrom}
+                                onChange={(e) => setExportFrom(e.target.value)}
+                                className="rounded border border-sidebar-border/70 bg-background px-2 py-1 text-xs"
+                            />
+                            <span className="text-muted-foreground">〜</span>
+                            <input
+                                type="date"
+                                value={exportTo}
+                                onChange={(e) => setExportTo(e.target.value)}
+                                className="rounded border border-sidebar-border/70 bg-background px-2 py-1 text-xs"
+                            />
+                        </div>
+                        <button
+                            onClick={handleExport}
+                            className="rounded-lg border border-sidebar-border/70 px-3 py-2 text-sm hover:bg-muted/50"
+                        >
+                            CSV エクスポート
+                        </button>
+                        <button
+                            onClick={openCreate}
+                            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                        >
+                            + 新規エピック（案件）
+                        </button>
+                    </div>
                 </div>
 
                 {/* 見積もりサマリー */}

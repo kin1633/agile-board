@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Epic;
 use App\Models\Member;
+use App\Models\Setting;
 use App\Models\Sprint;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -57,6 +60,116 @@ class EpicController extends Controller
     }
 
     /**
+     * 案件工数を CSV でエクスポートする。
+     *
+     * 集計粒度: 案件（Epic）× 担当者（Task の assignee_login）で1行。
+     * 期間フィルタ: Task の closed_at が from〜to に含まれるもののみ集計。
+     * 人日換算: hours ÷ hours_per_person_day（設定値、デフォルト7h）。
+     */
+    public function export(Request $request): HttpResponse
+    {
+        $validated = $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+        ]);
+
+        // 未指定の場合は当月の1日〜末日をデフォルトにする
+        $from = Carbon::parse($validated['from'] ?? now()->startOfMonth()->toDateString())->startOfDay();
+        $to = Carbon::parse($validated['to'] ?? now()->endOfMonth()->toDateString())->endOfDay();
+
+        $hoursPerPersonDay = (float) Setting::get('hours_per_person_day', '7');
+
+        $epics = Epic::with(['issues.subIssues'])->get();
+
+        $rows = [];
+
+        foreach ($epics as $epic) {
+            // assignee_login ごとに工数を集計する
+            $assigneeTotals = [];
+
+            foreach ($epic->issues as $story) {
+                foreach ($story->subIssues as $task) {
+                    // 期間フィルタ: closed_at が指定期間内のタスクのみ集計
+                    if (! $task->closed_at) {
+                        continue;
+                    }
+                    $closedAt = Carbon::parse($task->closed_at);
+                    if ($closedAt->lt($from) || $closedAt->gt($to)) {
+                        continue;
+                    }
+
+                    $assignee = $task->assignee_login ?? '未割当';
+                    if (! isset($assigneeTotals[$assignee])) {
+                        $assigneeTotals[$assignee] = ['estimated' => 0.0, 'actual' => 0.0];
+                    }
+                    $assigneeTotals[$assignee]['estimated'] += (float) ($task->estimated_hours ?? 0);
+                    $assigneeTotals[$assignee]['actual'] += (float) ($task->actual_hours ?? 0);
+                }
+            }
+
+            foreach ($assigneeTotals as $assignee => $totals) {
+                $estH = round($totals['estimated'], 2);
+                $actH = round($totals['actual'], 2);
+                $rows[] = [
+                    $epic->title,
+                    $assignee,
+                    $estH,
+                    $actH,
+                    // 人日換算（小数第2位まで）
+                    round($hoursPerPersonDay > 0 ? $estH / $hoursPerPersonDay : 0, 2),
+                    round($hoursPerPersonDay > 0 ? $actH / $hoursPerPersonDay : 0, 2),
+                ];
+            }
+        }
+
+        $fromStr = $from->toDateString();
+        $toStr = $to->toDateString();
+        $filename = "epics_export_{$fromStr}_{$toStr}.csv";
+
+        $csv = $this->buildCsv(
+            ['案件名', '担当者', '予定工数(h)', '実績工数(h)', '予定工数(人日)', '実績工数(人日)'],
+            $rows,
+        );
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
+    }
+
+    /**
+     * CSV 文字列を組み立てる。
+     * Excel での文字化けを防ぐため BOM を付与する。
+     *
+     * @param  string[]  $headers
+     * @param  array<int, array<int, mixed>>  $rows
+     */
+    private function buildCsv(array $headers, array $rows): string
+    {
+        $lines = [];
+        $lines[] = implode(',', array_map(fn ($v) => $this->escapeCsvField((string) $v), $headers));
+        foreach ($rows as $row) {
+            $lines[] = implode(',', array_map(fn ($v) => $this->escapeCsvField((string) $v), $row));
+        }
+
+        // UTF-8 BOM（Excel が文字化けしないように先頭に付与）
+        return "\xEF\xBB\xBF".implode("\n", $lines);
+    }
+
+    /**
+     * CSV フィールドをエスケープする。
+     * カンマ・改行・ダブルクォートを含む場合はダブルクォートで囲む。
+     */
+    private function escapeCsvField(string $value): string
+    {
+        if (str_contains($value, ',') || str_contains($value, "\n") || str_contains($value, '"')) {
+            return '"'.str_replace('"', '""', $value).'"';
+        }
+
+        return $value;
+    }
+
+    /**
      * エピックの集計データを整形する。
      *
      * 工数集計ロジック（Epic→Story→Task の3階層）:
@@ -87,7 +200,8 @@ class EpicController extends Controller
                 'id' => $issue->id,
                 'title' => $issue->title,
                 'state' => $issue->state,
-                'assignee_login' => $issue->assignee_login,
+                // Story の担当者はタスクの担当者を集約して表示する
+                'assignees' => $issue->subIssues->pluck('assignee_login')->filter()->unique()->values()->all(),
                 'story_points' => $issue->story_points,
                 'exclude_velocity' => $issue->exclude_velocity,
                 'estimated_hours' => $storyEstimated > 0 ? (float) round($storyEstimated, 2) : null,
@@ -103,6 +217,14 @@ class EpicController extends Controller
             ];
         })->values()->all();
 
+        // Epic の担当者 = 配下の全タスクの担当者をユニークで集約する
+        $epicAssignees = $epic->issues
+            ->flatMap(fn ($issue) => $issue->subIssues->pluck('assignee_login'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         return [
             'id' => $epic->id,
             'title' => $epic->title,
@@ -112,6 +234,7 @@ class EpicController extends Controller
             'completed_points' => $completedPoints,
             'open_issues' => $openIssues,
             'total_issues' => $totalIssues,
+            'assignees' => $epicAssignees,
             'estimated_hours' => $epicEstimated > 0 ? (float) round($epicEstimated, 2) : null,
             'actual_hours' => $epicActual > 0 ? (float) round($epicActual, 2) : null,
             'issues' => $formattedIssues,

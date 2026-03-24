@@ -53,7 +53,7 @@ interface Issue {
     github_issue_number: number;
     title: string;
     state: string;
-    assignee_login: string | null;
+    assignees: string[];
     story_points: number | null;
     exclude_velocity: boolean;
     closed_at: string | null;
@@ -239,9 +239,11 @@ export default function SprintShow({
                                                 ))}
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                {issue.assignee_login && (
+                                                {issue.assignees.length > 0 && (
                                                     <span>
-                                                        @{issue.assignee_login}
+                                                        {issue.assignees
+                                                            .map((a) => `@${a}`)
+                                                            .join(' ')}
                                                     </span>
                                                 )}
                                                 {issue.story_points != null && (
