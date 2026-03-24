@@ -25,8 +25,10 @@ issues
   id, repository_id → repositories
   sprint_id → sprints
   epic_id → epics
+  parent_issue_id → issues (nullable, 自己参照)
   github_issue_number, title, state, assignee_login
-  story_points*, exclude_velocity*, closed_at, synced_at
+  story_points*, exclude_velocity*, estimated_hours*, actual_hours*
+  closed_at, synced_at
 
 labels
   id, repository_id → repositories
@@ -77,10 +79,26 @@ members
 | カラム | 型 | 説明 |
 |---|---|---|
 | github_issue_number | int | GitHub 上の Issue 番号 |
-| story_points | int\|null | **手動設定**。ストーリーポイント |
-| exclude_velocity | boolean | **手動設定**。ベロシティ計算から除外するか |
+| parent_issue_id | FK\|null | 親 Issue の id（GitHub Sub-issue の場合に設定）。NULL = Story Issue |
+| story_points | int\|null | **手動設定**。ストーリーポイント（Story Issue のみ使用） |
+| exclude_velocity | boolean | **手動設定**。ベロシティ計算から除外するか（Sub-issue はデフォルト true） |
+| estimated_hours | decimal(8,2)\|null | **手動設定**。予定工数（Task Issue の工数管理に使用） |
+| actual_hours | decimal(8,2)\|null | **手動設定**。実績工数（Task Issue の工数管理に使用） |
 | state | string | `open` / `closed` |
 | closed_at | datetime | クローズされた日時（バーンダウン実績線に使用） |
+
+### Issue の種類（3階層）
+
+| 種類 | 条件 | 説明 |
+|---|---|---|
+| Story Issue | `parent_issue_id IS NULL` | スプリントに紐付く主な Issue。`story_points` でベロシティ計測 |
+| Task Issue（Sub-issue） | `parent_issue_id IS NOT NULL` | Story の子 Issue（GitHub Sub-issues）。`estimated_hours` / `actual_hours` で工数管理。ベロシティから除外 |
+
+```
+Epic（案件）
+  └─ Story Issue（epic_id で紐付け）
+       └─ Task Issue（parent_issue_id で紐付け）
+```
 
 ### labels
 
