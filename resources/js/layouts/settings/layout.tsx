@@ -5,10 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
-import { repositories, members, labels } from '@/routes/settings';
+import { general, repositories, members, labels } from '@/routes/settings';
 import type { NavItem } from '@/types';
 
 const sidebarNavItems: NavItem[] = [
+    {
+        title: '一般',
+        href: general(),
+        icon: null,
+    },
     {
         title: 'リポジトリ',
         href: repositories(),

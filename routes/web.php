@@ -38,6 +38,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/milestones', [MilestoneController::class, 'index'])->name('milestones.index');
 
     // エピック
+    // /epics/{epic} より前に定義しないとルートが衝突するため先頭に配置
+    Route::get('/epics/export', [EpicController::class, 'export'])->name('epics.export');
     Route::get('/epics', [EpicController::class, 'index'])->name('epics.index');
     Route::post('/epics', [EpicController::class, 'store'])->name('epics.store');
     Route::put('/epics/{epic}', [EpicController::class, 'update'])->name('epics.update');
