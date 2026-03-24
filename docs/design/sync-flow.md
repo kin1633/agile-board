@@ -39,7 +39,16 @@ POST /sync (SyncController)
           │       └─ 既存: start_date / working_days は保護（上書きしない）
           │
           │   各 Iteration に属する Issue を syncIssuesForIteration() で upsert
-          │       └─ story_points / exclude_velocity は保護
+          │       ├─ story_points / exclude_velocity / estimated_hours / actual_hours は保護
+          │       └─ repo_owner / repo_name で正しい repository_id に紐付け（マルチリポジトリ対応）
+          │
+          │   各 Issue に対して syncSubIssues() でサブイシューを同期
+          │       └─ GitHubGraphQLClient::fetchIssueNodeId() で Issue の Node ID 取得
+          │           └─ GitHubGraphQLClient::fetchSubIssues() でサブイシュー一覧取得
+          │               ├─ GitHub Sub-issues Public Preview API（GraphQL-Features ヘッダー必要）
+          │               ├─ 各サブイシューを parent_issue_id 付きで upsert
+          │               ├─ estimated_hours / actual_hours は保護（ユーザー入力値を守る）
+          │               └─ 新規サブイシューは exclude_velocity = true（デフォルト）
           │
           ├─ syncLabels()
           │   └─ GitHub REST API: GET /repos/{owner}/{repo}/labels
@@ -70,8 +79,25 @@ POST /sync (SyncController)
 | sprints | working_days | 稼働日数は GitHub に存在しない |
 | issues | story_points | GitHub Issue にストーリーポイントの概念がない |
 | issues | exclude_velocity | ベロシティ除外設定は GitHub に存在しない |
+| issues | estimated_hours | ユーザーがアプリ側で入力する予定工数 |
+| issues | actual_hours | ユーザーがアプリ側で入力する実績工数 |
 
 実装上は `updateOrCreate` 時に、既存レコードがある場合はこれらのカラムを `update` の対象から除外しています。
+
+---
+
+## マルチリポジトリ対応
+
+Iteration モードでは、1つの GitHub Project に複数のリポジトリの Issue が含まれる場合があります。GraphQL レスポンスの各 Issue には `repository { owner { login } name }` が含まれており、これを使って正しい `repository_id` を解決します。
+
+```
+resolveRepository(fallback, repo_owner, repo_name):
+  1. repo_owner / repo_name が null → fallback リポジトリを使用
+  2. DB に該当リポジトリが存在しない → fallback リポジトリを使用
+  3. 一致するリポジトリが存在する → そのリポジトリを使用
+```
+
+> fallback は `github_project_number` が設定されたアクティブリポジトリです。
 
 ---
 
