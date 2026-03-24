@@ -27,7 +27,7 @@ import milestones from '@/routes/milestones';
 import sprints from '@/routes/sprints';
 import epics from '@/routes/epics';
 import retrospectives from '@/routes/retrospectives';
-import settings from '@/routes/settings';
+import { general, repositories, members, labels } from '@/routes/settings';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -58,8 +58,14 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: '設定',
-        href: settings.repositories(),
+        href: general(),
         icon: Settings,
+        children: [
+            { title: '一般', href: general() },
+            { title: 'リポジトリ', href: repositories() },
+            { title: 'メンバー', href: members() },
+            { title: 'ラベル', href: labels() },
+        ],
     },
 ];
 

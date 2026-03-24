@@ -19,7 +19,7 @@ class LabelFactory extends Factory
     {
         return [
             'name' => fake()->unique()->word(),
-            'exclude_velocity' => false,
+            'include_velocity' => true,
         ];
     }
 }

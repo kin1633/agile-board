@@ -18,7 +18,7 @@ class LabelController extends Controller
             ->map(fn (Label $l) => [
                 'id' => $l->id,
                 'name' => $l->name,
-                'exclude_velocity' => $l->exclude_velocity,
+                'include_velocity' => $l->include_velocity,
             ]);
 
         return Inertia::render('settings/labels', compact('labels'));
@@ -27,7 +27,7 @@ class LabelController extends Controller
     public function update(Request $request, Label $label): RedirectResponse
     {
         $validated = $request->validate([
-            'exclude_velocity' => ['required', 'boolean'],
+            'include_velocity' => ['required', 'boolean'],
         ]);
 
         $label->update($validated);

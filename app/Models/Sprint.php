@@ -44,27 +44,27 @@ class Sprint extends Model
 
     /**
      * ポイントベースのベロシティを計算する。
-     * exclude_velocity=true のIssueとラベルは除外する。
+     * Issue の exclude_velocity=true、またはラベルの include_velocity=false の Issue は除外する。
      */
     public function pointVelocity(): int
     {
         return $this->issues()
             ->where('state', 'closed')
             ->where('exclude_velocity', false)
-            ->whereDoesntHave('labels', fn ($q) => $q->where('exclude_velocity', true))
+            ->whereDoesntHave('labels', fn ($q) => $q->where('include_velocity', false))
             ->sum('story_points');
     }
 
     /**
      * Issueベースのベロシティを計算する。
-     * exclude_velocity=true のIssueとラベルは除外する。
+     * Issue の exclude_velocity=true、またはラベルの include_velocity=false の Issue は除外する。
      */
     public function issueVelocity(): int
     {
         return $this->issues()
             ->where('state', 'closed')
             ->where('exclude_velocity', false)
-            ->whereDoesntHave('labels', fn ($q) => $q->where('exclude_velocity', true))
+            ->whereDoesntHave('labels', fn ($q) => $q->where('include_velocity', false))
             ->count();
     }
 }

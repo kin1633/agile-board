@@ -11,4 +11,6 @@ export type NavItem = {
     href: NonNullable<InertiaLinkProps['href']>;
     icon?: LucideIcon | null;
     isActive?: boolean;
+    /** サブメニュー項目。指定するとアコーディオン展開になる */
+    children?: Pick<NavItem, 'title' | 'href'>[];
 };
