@@ -140,7 +140,6 @@ class GitHubSyncService
     {
         $result = $this->graphql->fetchProjectIterationsWithItems(
             $repository->owner,
-            $repository->name,
             $repository->github_project_number,
             $token
         );

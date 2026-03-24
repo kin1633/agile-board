@@ -16,6 +16,14 @@ class GitHubGraphQLClient
 {
     private const GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
 
+    /**
+     * owner が Organization か個人アカウントかのキャッシュ。
+     * 同一リクエスト内で複数回呼ばれても API コールを節約する。
+     *
+     * @var array<string, 'organization'|'user'>
+     */
+    private array $ownerTypeCache = [];
+
     public function __construct(
         private readonly Http $http,
     ) {}
@@ -66,12 +74,11 @@ class GitHubGraphQLClient
      */
     public function fetchProjectIterationsWithItems(
         string $owner,
-        string $repo,
         int $projectNumber,
         string $token
     ): array {
-        $iterations = $this->fetchIterationFields($owner, $repo, $projectNumber, $token);
-        $issuesByIteration = $this->fetchProjectItems($owner, $repo, $projectNumber, $token, $iterations);
+        $iterations = $this->fetchIterationFields($owner, $projectNumber, $token);
+        $issuesByIteration = $this->fetchProjectItems($owner, $projectNumber, $token, $iterations);
 
         return [
             'iterations' => $iterations,
@@ -82,18 +89,23 @@ class GitHubGraphQLClient
     /**
      * ProjectV2 の IterationField から Iteration の一覧を取得する。
      *
+     * organization → user の順でフォールバックして owner 種別を解決する。
+     *
      * @return array<int, array{id: string, title: string, startDate: string, duration: int}>
      */
     private function fetchIterationFields(
         string $owner,
-        string $repo,
         int $projectNumber,
         string $token
     ): array {
-        $query = <<<'GRAPHQL'
-        query($owner: String!, $repo: String!, $number: Int!) {
-            repository(owner: $owner, name: $repo) {
-                projectV2(number: $number) {
+        $ownerType = $this->resolveOwnerType($owner, $token);
+
+        // $ownerType を PHP 変数として展開するため heredoc（クォートなし）を使用。
+        // GraphQL 変数の $ は \$ でエスケープして PHP 展開を防ぐ。
+        $query = <<<GRAPHQL
+        query(\$owner: String!, \$number: Int!) {
+            {$ownerType}(login: \$owner) {
+                projectV2(number: \$number) {
                     fields(first: 20) {
                         nodes {
                             ... on ProjectV2IterationField {
@@ -123,11 +135,10 @@ class GitHubGraphQLClient
 
         $data = $this->query($query, [
             'owner' => $owner,
-            'repo' => $repo,
             'number' => $projectNumber,
         ], $token);
 
-        $fields = $data['repository']['projectV2']['fields']['nodes'] ?? [];
+        $fields = $data[$ownerType]['projectV2']['fields']['nodes'] ?? [];
         $iterations = [];
 
         foreach ($fields as $field) {
@@ -164,16 +175,18 @@ class GitHubGraphQLClient
      */
     private function fetchProjectItems(
         string $owner,
-        string $repo,
         int $projectNumber,
         string $token,
         array $iterations
     ): array {
-        $query = <<<'GRAPHQL'
-        query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
-            repository(owner: $owner, name: $repo) {
-                projectV2(number: $number) {
-                    items(first: 100, after: $cursor) {
+        // resolveOwnerType はキャッシュ済みのため追加 API コールは発生しない
+        $ownerType = $this->resolveOwnerType($owner, $token);
+
+        $query = <<<GRAPHQL
+        query(\$owner: String!, \$number: Int!, \$cursor: String) {
+            {$ownerType}(login: \$owner) {
+                projectV2(number: \$number) {
+                    items(first: 100, after: \$cursor) {
                         pageInfo {
                             hasNextPage
                             endCursor
@@ -220,12 +233,11 @@ class GitHubGraphQLClient
         do {
             $data = $this->query($query, [
                 'owner' => $owner,
-                'repo' => $repo,
                 'number' => $projectNumber,
                 'cursor' => $cursor,
             ], $token);
 
-            $items = $data['repository']['projectV2']['items'];
+            $items = $data[$ownerType]['projectV2']['items'];
             $pageInfo = $items['pageInfo'];
 
             foreach ($items['nodes'] as $item) {
@@ -373,6 +385,36 @@ class GitHubGraphQLClient
         ], $token);
 
         return $data['repository']['issue']['id'] ?? null;
+    }
+
+    /**
+     * owner が Organization か個人アカウントかを判定して返す。
+     *
+     * organization クエリが成功すれば 'organization'、
+     * GraphQL エラーが返った場合（個人アカウント）は 'user' にフォールバックする。
+     * 結果はリクエスト内でキャッシュし、同一 owner への重複 API コールを防ぐ。
+     *
+     * @return 'organization'|'user'
+     */
+    private function resolveOwnerType(string $owner, string $token): string
+    {
+        if (array_key_exists($owner, $this->ownerTypeCache)) {
+            return $this->ownerTypeCache[$owner];
+        }
+
+        try {
+            $this->query(
+                'query($owner: String!) { organization(login: $owner) { login } }',
+                ['owner' => $owner],
+                $token,
+            );
+            $type = 'organization';
+        } catch (\RuntimeException) {
+            // organization が存在しない（個人アカウント等）場合は user として扱う
+            $type = 'user';
+        }
+
+        return $this->ownerTypeCache[$owner] = $type;
     }
 
     /**
