@@ -1,4 +1,5 @@
 import { Link } from '@inertiajs/react';
+import type { InertiaLinkProps } from '@inertiajs/react';
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -58,9 +59,7 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
 interface CollapsibleNavItemProps {
     item: NavItem;
     isParentActive: boolean;
-    isCurrentUrl: (
-        href: NonNullable<import('@inertiajs/react').InertiaLinkProps['href']>,
-    ) => boolean;
+    isCurrentUrl: (href: NonNullable<InertiaLinkProps['href']>) => boolean;
 }
 
 function CollapsibleNavItem({
