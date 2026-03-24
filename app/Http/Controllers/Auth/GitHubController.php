@@ -12,12 +12,13 @@ class GitHubController extends Controller
 {
     /**
      * GitHub認証画面へリダイレクトする。
-     * repo / read:user / read:org スコープを要求する。
+     * repo / read:user / read:org / project スコープを要求する。
+     * project スコープは ProjectV2（Iteration）の読み取りに必要。
      */
     public function redirect(): RedirectResponse
     {
         return Socialite::driver('github')
-            ->scopes(['repo', 'read:user', 'read:org'])
+            ->scopes(['repo', 'read:user', 'read:org', 'project'])
             ->redirect();
     }
 

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['owner', 'name', 'full_name', 'active', 'synced_at'])]
+#[Fillable(['owner', 'name', 'full_name', 'active', 'github_project_number', 'synced_at'])]
 class Repository extends Model
 {
     use HasFactory;

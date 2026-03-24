@@ -23,11 +23,25 @@ class SprintFactory extends Factory
 
         return [
             'milestone_id' => Milestone::factory(),
+            'github_iteration_id' => null,
             'title' => 'Sprint '.fake()->numberBetween(1, 50),
             'start_date' => $startDate->format('Y-m-d'),
             'end_date' => $endDate->format('Y-m-d'),
             'working_days' => 5,
+            'iteration_duration_days' => null,
             'state' => 'open',
         ];
+    }
+
+    /**
+     * Iteration ベースのスプリント（milestone_id なし）を作成するステート。
+     */
+    public function iteration(): static
+    {
+        return $this->state(fn () => [
+            'milestone_id' => null,
+            'github_iteration_id' => fake()->unique()->regexify('[A-Za-z0-9]{8}'),
+            'iteration_duration_days' => 14,
+        ]);
     }
 }
