@@ -8,7 +8,8 @@ use Illuminate\Http\Client\RequestException;
 /**
  * GitHub GraphQL API クライアント。
  *
- * REST API では取得できない ProjectV2 の Iteration フィールドを扱うために使用する。
+ * REST API では取得できない ProjectV2 の Iteration フィールドと
+ * Sub-issues（サブイシュー）の取得に使用する。
  * GitHub GraphQL エンドポイント: POST https://api.github.com/graphql
  */
 class GitHubGraphQLClient
@@ -155,9 +156,11 @@ class GitHubGraphQLClient
      * ProjectV2 のアイテム（Issue）を全ページ取得し、Iteration ID でグループ化して返す。
      *
      * カーソルベースのページネーション（100件ずつ）で全件取得する。
+     * 複数リポジトリが同一プロジェクトに紐付く場合を考慮し、
+     * Issue の所属リポジトリ情報（repository.owner.login / name）も取得する。
      *
      * @param  array<int, array{id: string}>  $iterations  既知の Iteration 一覧（ID 集合の構築に使用）
-     * @return array<string, array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, labels: array<int, string>}>>
+     * @return array<string, array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, labels: array<int, string>, repo_owner: string, repo_name: string}>>
      */
     private function fetchProjectItems(
         string $owner,
@@ -187,6 +190,10 @@ class GitHubGraphQLClient
                                     }
                                     labels(first: 10) {
                                         nodes { name }
+                                    }
+                                    repository {
+                                        owner { login }
+                                        name
                                     }
                                 }
                             }
@@ -242,6 +249,9 @@ class GitHubGraphQLClient
                     'closed_at' => $content['closedAt'] ?? null,
                     'assignee' => $content['assignees']['nodes'][0]['login'] ?? null,
                     'labels' => collect($content['labels']['nodes'])->pluck('name')->all(),
+                    // 複数リポジトリが同一プロジェクトに紐付く場合の識別用
+                    'repo_owner' => $content['repository']['owner']['login'] ?? null,
+                    'repo_name' => $content['repository']['name'] ?? null,
                 ];
             }
 
@@ -249,6 +259,120 @@ class GitHubGraphQLClient
         } while ($cursor !== null);
 
         return $issuesByIteration;
+    }
+
+    /**
+     * 指定 Issue のサブイシュー（Sub-issues）を全件取得する。
+     *
+     * Sub-issues API は GitHub Public Preview のため、
+     * GraphQL-Features: sub_issues ヘッダーが必要。
+     * サブイシューは同一リポジトリのみ（GitHub 仕様）。
+     *
+     * @return array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, node_id: string}>
+     */
+    public function fetchSubIssues(string $issueNodeId, string $token): array
+    {
+        $query = <<<'GRAPHQL'
+        query($nodeId: ID!, $cursor: String) {
+            node(id: $nodeId) {
+                ... on Issue {
+                    subIssues(first: 100, after: $cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        nodes {
+                            id
+                            number
+                            title
+                            state
+                            closedAt
+                            assignees(first: 1) {
+                                nodes { login }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        GRAPHQL;
+
+        $subIssues = [];
+        $cursor = null;
+
+        do {
+            // Sub-issues API は Public Preview のため専用ヘッダーが必要
+            $response = $this->http
+                ->withToken($token)
+                ->withHeaders([
+                    'Accept' => 'application/json',
+                    'X-GitHub-Api-Version' => '2022-11-28',
+                    'GraphQL-Features' => 'sub_issues',
+                ])
+                ->post(self::GRAPHQL_ENDPOINT, [
+                    'query' => $query,
+                    'variables' => ['nodeId' => $issueNodeId, 'cursor' => $cursor],
+                ]);
+
+            if (! $response->successful()) {
+                throw new RequestException($response);
+            }
+
+            $body = $response->json();
+
+            if (! empty($body['errors'])) {
+                $message = collect($body['errors'])->pluck('message')->join(', ');
+                throw new \RuntimeException("GitHub GraphQL エラー (Sub-issues): {$message}");
+            }
+
+            $data = $body['data']['node']['subIssues'] ?? null;
+
+            if ($data === null) {
+                break;
+            }
+
+            foreach ($data['nodes'] as $node) {
+                $subIssues[] = [
+                    'node_id' => $node['id'],
+                    'number' => $node['number'],
+                    'title' => $node['title'],
+                    'state' => strtolower($node['state']),
+                    'closed_at' => $node['closedAt'] ?? null,
+                    'assignee' => $node['assignees']['nodes'][0]['login'] ?? null,
+                ];
+            }
+
+            $pageInfo = $data['pageInfo'];
+            $cursor = $pageInfo['hasNextPage'] ? $pageInfo['endCursor'] : null;
+        } while ($cursor !== null);
+
+        return $subIssues;
+    }
+
+    /**
+     * 指定 Issue の GraphQL Node ID を取得する。
+     *
+     * fetchSubIssues() の引数として使用するためのヘルパー。
+     */
+    public function fetchIssueNodeId(string $owner, string $repo, int $issueNumber, string $token): ?string
+    {
+        $query = <<<'GRAPHQL'
+        query($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+                issue(number: $number) {
+                    id
+                }
+            }
+        }
+        GRAPHQL;
+
+        $data = $this->query($query, [
+            'owner' => $owner,
+            'repo' => $repo,
+            'number' => $issueNumber,
+        ], $token);
+
+        return $data['repository']['issue']['id'] ?? null;
     }
 
     /**

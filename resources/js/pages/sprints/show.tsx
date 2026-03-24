@@ -38,6 +38,16 @@ interface Epic {
     title: string;
 }
 
+interface SubIssue {
+    id: number;
+    github_issue_number: number;
+    title: string;
+    state: string;
+    assignee_login: string | null;
+    estimated_hours: number | null;
+    actual_hours: number | null;
+}
+
 interface Issue {
     id: number;
     github_issue_number: number;
@@ -49,6 +59,7 @@ interface Issue {
     closed_at: string | null;
     epic: Epic | null;
     labels: Label[];
+    sub_issues: SubIssue[];
 }
 
 interface BurndownPoint {
@@ -92,6 +103,19 @@ export default function SprintShow({
         router.patch(issueUpdate({ issue: issue.id }).url, {
             epic_id: epicId === '' ? null : Number(epicId),
         });
+    };
+
+    /** タスクの工数フィールドをblur時にPATCH送信する */
+    const handleHoursBlur = (
+        taskId: number,
+        field: 'estimated_hours' | 'actual_hours',
+        value: string,
+    ) => {
+        const parsed = value === '' ? null : parseFloat(value);
+        if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
+            return;
+        }
+        router.patch(issueUpdate({ issue: taskId }).url, { [field]: parsed });
     };
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -169,64 +193,163 @@ export default function SprintShow({
                         {issues.length > 0 ? (
                             <ul className="divide-y divide-sidebar-border/50">
                                 {issues.map((issue) => (
-                                    <li
-                                        key={issue.id}
-                                        className="flex items-center justify-between px-6 py-3"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <span
-                                                className={`h-2 w-2 shrink-0 rounded-full ${issue.state === 'open' ? 'bg-green-500' : 'bg-muted-foreground'}`}
-                                            />
-                                            <span className="text-xs text-muted-foreground">
-                                                #{issue.github_issue_number}
-                                            </span>
-                                            <span className="text-sm">
-                                                {issue.title}
-                                            </span>
-                                            {/* エピック（案件）選択ドロップダウン */}
-                                            <select
-                                                value={issue.epic?.id ?? ''}
-                                                onChange={(e) =>
-                                                    handleEpicChange(
-                                                        issue,
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs text-purple-700 focus:outline-none"
-                                            >
-                                                <option value="">
-                                                    案件なし
-                                                </option>
-                                                {epics.map((epic) => (
-                                                    <option
-                                                        key={epic.id}
-                                                        value={epic.id}
-                                                    >
-                                                        {epic.title}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            {issue.labels.map((label) => (
+                                    <li key={issue.id}>
+                                        {/* ストーリー Issue 行 */}
+                                        <div className="flex items-center justify-between px-6 py-3">
+                                            <div className="flex items-center gap-3">
                                                 <span
-                                                    key={label.id}
-                                                    className="rounded-full bg-muted px-2 py-0.5 text-xs"
+                                                    className={`h-2 w-2 shrink-0 rounded-full ${issue.state === 'open' ? 'bg-green-500' : 'bg-muted-foreground'}`}
+                                                />
+                                                <span className="text-xs text-muted-foreground">
+                                                    #{issue.github_issue_number}
+                                                </span>
+                                                <span className="text-sm">
+                                                    {issue.title}
+                                                </span>
+                                                {/* エピック（案件）選択ドロップダウン */}
+                                                <select
+                                                    value={issue.epic?.id ?? ''}
+                                                    onChange={(e) =>
+                                                        handleEpicChange(
+                                                            issue,
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs text-purple-700 focus:outline-none"
                                                 >
-                                                    {label.name}
-                                                </span>
-                                            ))}
+                                                    <option value="">
+                                                        案件なし
+                                                    </option>
+                                                    {epics.map((epic) => (
+                                                        <option
+                                                            key={epic.id}
+                                                            value={epic.id}
+                                                        >
+                                                            {epic.title}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {issue.labels.map((label) => (
+                                                    <span
+                                                        key={label.id}
+                                                        className="rounded-full bg-muted px-2 py-0.5 text-xs"
+                                                    >
+                                                        {label.name}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                {issue.assignee_login && (
+                                                    <span>
+                                                        @{issue.assignee_login}
+                                                    </span>
+                                                )}
+                                                {issue.story_points != null && (
+                                                    <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700">
+                                                        {issue.story_points} pt
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                            {issue.assignee_login && (
-                                                <span>
-                                                    @{issue.assignee_login}
-                                                </span>
-                                            )}
-                                            {issue.story_points != null && (
-                                                <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700">
-                                                    {issue.story_points} pt
-                                                </span>
-                                            )}
-                                        </div>
+                                        {/* サブイシュー（タスク）一覧 — インデント表示 */}
+                                        {issue.sub_issues.length > 0 && (
+                                            <ul className="border-t border-sidebar-border/30 bg-muted/20">
+                                                {issue.sub_issues.map(
+                                                    (task) => (
+                                                        <li
+                                                            key={task.id}
+                                                            className="flex items-center justify-between py-2 pr-6 pl-14"
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <span
+                                                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${task.state === 'open' ? 'bg-green-400' : 'bg-muted-foreground'}`}
+                                                                />
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    #
+                                                                    {
+                                                                        task.github_issue_number
+                                                                    }
+                                                                </span>
+                                                                <span className="text-xs">
+                                                                    {task.title}
+                                                                </span>
+                                                            </div>
+                                                            {/* タスクの工数入力フィールド */}
+                                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                                {task.assignee_login && (
+                                                                    <span>
+                                                                        @
+                                                                        {
+                                                                            task.assignee_login
+                                                                        }
+                                                                    </span>
+                                                                )}
+                                                                <label className="flex items-center gap-1">
+                                                                    <span className="text-muted-foreground">
+                                                                        予定
+                                                                    </span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="0.25"
+                                                                        defaultValue={
+                                                                            task.estimated_hours ??
+                                                                            ''
+                                                                        }
+                                                                        onBlur={(
+                                                                            e,
+                                                                        ) =>
+                                                                            handleHoursBlur(
+                                                                                task.id,
+                                                                                'estimated_hours',
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            )
+                                                                        }
+                                                                        placeholder="—"
+                                                                        className="w-16 rounded border border-sidebar-border/50 bg-background px-1.5 py-0.5 text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                                                                    />
+                                                                    <span className="text-muted-foreground">
+                                                                        h
+                                                                    </span>
+                                                                </label>
+                                                                <label className="flex items-center gap-1">
+                                                                    <span className="text-muted-foreground">
+                                                                        実績
+                                                                    </span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="0.25"
+                                                                        defaultValue={
+                                                                            task.actual_hours ??
+                                                                            ''
+                                                                        }
+                                                                        onBlur={(
+                                                                            e,
+                                                                        ) =>
+                                                                            handleHoursBlur(
+                                                                                task.id,
+                                                                                'actual_hours',
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            )
+                                                                        }
+                                                                        placeholder="—"
+                                                                        className="w-16 rounded border border-sidebar-border/50 bg-background px-1.5 py-0.5 text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                                                                    />
+                                                                    <span className="text-muted-foreground">
+                                                                        h
+                                                                    </span>
+                                                                </label>
+                                                            </div>
+                                                        </li>
+                                                    ),
+                                                )}
+                                            </ul>
+                                        )}
                                     </li>
                                 ))}
                             </ul>

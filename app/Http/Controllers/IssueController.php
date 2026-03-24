@@ -9,16 +9,24 @@ use Illuminate\Http\Request;
 class IssueController extends Controller
 {
     /**
-     * Issue のエピック（案件）紐付けを更新する。
+     * Issue のアプリ側管理フィールドを更新する。
      *
-     * story_points / exclude_velocity と同様に GitHub 同期で上書きされない
-     * アプリ側管理フィールドのため、専用エンドポイントで更新する。
+     * GitHub 同期で上書きされないフィールドのみ更新対象とする:
+     * - epic_id: エピック（案件）との紐付け
+     * - story_points: ストーリーポイント
+     * - exclude_velocity: ベロシティ除外フラグ
+     * - estimated_hours: 予定工数（タスクの工数管理）
+     * - actual_hours: 実績工数（タスクの工数管理）
      */
     public function update(Request $request, Issue $issue): RedirectResponse
     {
         $validated = $request->validate([
             // null を許容: エピック紐付け解除に対応
             'epic_id' => ['nullable', 'integer', 'exists:epics,id'],
+            'story_points' => ['nullable', 'integer', 'min:0'],
+            'exclude_velocity' => ['nullable', 'boolean'],
+            'estimated_hours' => ['nullable', 'numeric', 'min:0', 'max:9999.99'],
+            'actual_hours' => ['nullable', 'numeric', 'min:0', 'max:9999.99'],
         ]);
 
         $issue->update($validated);

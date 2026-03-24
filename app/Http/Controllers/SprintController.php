@@ -31,7 +31,8 @@ class SprintController extends Controller
 
     public function show(Sprint $sprint): Response
     {
-        $sprint->load(['issues.labels', 'issues.epic', 'milestone.repository']);
+        // subIssues（タスク）も eager load し、工数表示に使用する
+        $sprint->load(['issues.labels', 'issues.epic', 'issues.subIssues', 'milestone.repository']);
 
         $issues = $sprint->issues->map(fn ($issue) => [
             'id' => $issue->id,
@@ -44,6 +45,15 @@ class SprintController extends Controller
             'closed_at' => $issue->closed_at?->toDateString(),
             'epic' => $issue->epic ? ['id' => $issue->epic->id, 'title' => $issue->epic->title] : null,
             'labels' => $issue->labels->map(fn ($l) => ['id' => $l->id, 'name' => $l->name])->all(),
+            'sub_issues' => $issue->subIssues->map(fn ($task) => [
+                'id' => $task->id,
+                'github_issue_number' => $task->github_issue_number,
+                'title' => $task->title,
+                'state' => $task->state,
+                'assignee_login' => $task->assignee_login,
+                'estimated_hours' => $task->estimated_hours !== null ? (float) $task->estimated_hours : null,
+                'actual_hours' => $task->actual_hours !== null ? (float) $task->actual_hours : null,
+            ])->values()->all(),
         ]);
 
         $burndownData = $this->buildBurndownData($sprint);

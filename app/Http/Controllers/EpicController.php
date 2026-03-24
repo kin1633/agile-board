@@ -14,7 +14,8 @@ class EpicController extends Controller
 {
     public function index(): Response
     {
-        $epics = Epic::with('issues')->get()->map(fn (Epic $epic) => $this->formatEpic($epic));
+        // サブイシュー（タスク）の工数集計のため subIssues を eager load する
+        $epics = Epic::with('issues.subIssues')->get()->map(fn (Epic $epic) => $this->formatEpic($epic));
 
         return Inertia::render('epics/index', [
             'epics' => $epics,
@@ -58,6 +59,11 @@ class EpicController extends Controller
     /**
      * エピックの集計データを整形する。
      *
+     * 工数集計ロジック（Epic→Story→Task の3階層）:
+     * - Task: parent_issue_id を持つ Issue（estimated_hours / actual_hours を保持）
+     * - Story: parent_issue_id が NULL の Issue（epic_id で Epic に紐付く）
+     * - Epic の工数合計 = 配下の全 Story の Task 工数合計
+     *
      * @return array<string, mixed>
      */
     private function formatEpic(Epic $epic): array
@@ -66,6 +72,36 @@ class EpicController extends Controller
         $completedPoints = (int) $epic->issues->where('state', 'closed')->sum('story_points');
         $openIssues = $epic->issues->where('state', 'open')->count();
         $totalIssues = $epic->issues->count();
+
+        // Story ごとにサブイシュー（Task）の工数を集計する
+        $epicEstimated = 0.0;
+        $epicActual = 0.0;
+
+        $formattedIssues = $epic->issues->map(function ($issue) use (&$epicEstimated, &$epicActual) {
+            $storyEstimated = (float) $issue->subIssues->sum('estimated_hours');
+            $storyActual = (float) $issue->subIssues->sum('actual_hours');
+            $epicEstimated += $storyEstimated;
+            $epicActual += $storyActual;
+
+            return [
+                'id' => $issue->id,
+                'title' => $issue->title,
+                'state' => $issue->state,
+                'assignee_login' => $issue->assignee_login,
+                'story_points' => $issue->story_points,
+                'exclude_velocity' => $issue->exclude_velocity,
+                'estimated_hours' => $storyEstimated > 0 ? (float) round($storyEstimated, 2) : null,
+                'actual_hours' => $storyActual > 0 ? (float) round($storyActual, 2) : null,
+                'sub_issues' => $issue->subIssues->map(fn ($task) => [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'state' => $task->state,
+                    'assignee_login' => $task->assignee_login,
+                    'estimated_hours' => $task->estimated_hours !== null ? (float) $task->estimated_hours : null,
+                    'actual_hours' => $task->actual_hours !== null ? (float) $task->actual_hours : null,
+                ])->values()->all(),
+            ];
+        })->values()->all();
 
         return [
             'id' => $epic->id,
@@ -76,6 +112,9 @@ class EpicController extends Controller
             'completed_points' => $completedPoints,
             'open_issues' => $openIssues,
             'total_issues' => $totalIssues,
+            'estimated_hours' => $epicEstimated > 0 ? (float) round($epicEstimated, 2) : null,
+            'actual_hours' => $epicActual > 0 ? (float) round($epicActual, 2) : null,
+            'issues' => $formattedIssues,
         ];
     }
 

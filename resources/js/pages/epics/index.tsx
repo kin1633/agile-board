@@ -17,6 +17,10 @@ interface EpicRow {
     completed_points: number;
     open_issues: number;
     total_issues: number;
+    /** タスク工数集計: 配下の全Taskの予定工数合計 */
+    estimated_hours: number | null;
+    /** タスク工数集計: 配下の全Taskの実績工数合計 */
+    actual_hours: number | null;
 }
 
 interface Estimation {
@@ -314,6 +318,27 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                                         open Issue
                                                     </p>
                                                 </div>
+                                                {/* タスク工数トラッキング（実績 / 予定） */}
+                                                {(epic.estimated_hours !==
+                                                    null ||
+                                                    epic.actual_hours !==
+                                                        null) && (
+                                                    <div className="text-center">
+                                                        <p className="text-lg font-bold text-foreground">
+                                                            {epic.actual_hours ??
+                                                                0}
+                                                            <span className="text-sm font-normal text-muted-foreground">
+                                                                {' '}
+                                                                /{' '}
+                                                                {epic.estimated_hours ??
+                                                                    '-'}
+                                                            </span>
+                                                        </p>
+                                                        <p className="text-xs">
+                                                            実績 / 予定 (h)
+                                                        </p>
+                                                    </div>
+                                                )}
                                                 <div className="text-center">
                                                     <p className="text-lg font-bold text-foreground">
                                                         {estimatedSprints(
