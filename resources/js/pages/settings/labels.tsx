@@ -11,7 +11,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 interface LabelRow {
     id: number;
     name: string;
-    exclude_velocity: boolean;
+    include_velocity: boolean;
 }
 
 interface Props {
@@ -19,9 +19,9 @@ interface Props {
 }
 
 export default function LabelsSettings({ labels }: Props) {
-    const toggleExcludeVelocity = (label: LabelRow) => {
+    const toggleIncludeVelocity = (label: LabelRow) => {
         router.patch(settingsLabels.update({ label: label.id }).url, {
-            exclude_velocity: !label.exclude_velocity,
+            include_velocity: !label.include_velocity,
         });
     };
 
@@ -33,7 +33,7 @@ export default function LabelsSettings({ labels }: Props) {
                     <div>
                         <h1 className="text-xl font-semibold">ラベル管理</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            ベロシティ計算から除外するラベルを設定できます
+                            ベロシティ計算の管理対象ラベルを設定できます
                         </p>
                     </div>
                 </div>
@@ -51,27 +51,27 @@ export default function LabelsSettings({ labels }: Props) {
                                     </span>
                                     <div className="flex items-center gap-3">
                                         <span className="text-xs text-muted-foreground">
-                                            {label.exclude_velocity
-                                                ? 'ベロシティ除外'
-                                                : 'ベロシティに含める'}
+                                            {label.include_velocity
+                                                ? '管理対象'
+                                                : 'ベロシティ除外'}
                                         </span>
                                         <button
                                             onClick={() =>
-                                                toggleExcludeVelocity(label)
+                                                toggleIncludeVelocity(label)
                                             }
                                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                label.exclude_velocity
+                                                label.include_velocity
                                                     ? 'bg-primary'
                                                     : 'bg-muted'
                                             }`}
                                             role="switch"
                                             aria-checked={
-                                                label.exclude_velocity
+                                                label.include_velocity
                                             }
                                         >
                                             <span
                                                 className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                                                    label.exclude_velocity
+                                                    label.include_velocity
                                                         ? 'translate-x-6'
                                                         : 'translate-x-1'
                                                 }`}

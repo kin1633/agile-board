@@ -9,8 +9,8 @@ test('未認証ユーザーはラベル設定にアクセスできない', funct
 
 test('ラベル一覧が表示される', function () {
     $user = User::factory()->create();
-    Label::factory()->create(['name' => 'bug', 'exclude_velocity' => false]);
-    Label::factory()->create(['name' => 'chore', 'exclude_velocity' => true]);
+    Label::factory()->create(['name' => 'bug', 'include_velocity' => true]);
+    Label::factory()->create(['name' => 'chore', 'include_velocity' => false]);
 
     $this->actingAs($user)
         ->get(route('settings.labels'))
@@ -21,13 +21,13 @@ test('ラベル一覧が表示される', function () {
         );
 });
 
-test('ラベルのexclude_velocityを更新できる', function () {
+test('ラベルのinclude_velocityを更新できる', function () {
     $user = User::factory()->create();
-    $label = Label::factory()->create(['exclude_velocity' => false]);
+    $label = Label::factory()->create(['include_velocity' => true]);
 
     $this->actingAs($user)
-        ->patch(route('settings.labels.update', $label), ['exclude_velocity' => true])
+        ->patch(route('settings.labels.update', $label), ['include_velocity' => false])
         ->assertRedirect(route('settings.labels'));
 
-    expect($label->fresh()->exclude_velocity)->toBeTrue();
+    expect($label->fresh()->include_velocity)->toBeFalse();
 });
