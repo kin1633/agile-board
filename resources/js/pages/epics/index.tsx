@@ -13,6 +13,8 @@ interface EpicRow {
     title: string;
     description: string | null;
     status: string;
+    due_date: string | null;
+    priority: 'high' | 'medium' | 'low';
     total_points: number;
     completed_points: number;
     open_issues: number;
@@ -46,6 +48,18 @@ const STATUS_CLASSES: Record<string, string> = {
     done: 'bg-green-100 text-green-700',
 };
 
+const PRIORITY_LABELS: Record<string, string> = {
+    high: '高',
+    medium: '中',
+    low: '低',
+};
+
+const PRIORITY_CLASSES: Record<string, string> = {
+    high: 'bg-red-100 text-red-700 border border-red-200',
+    medium: 'bg-yellow-100 text-yellow-700 border border-yellow-200',
+    low: 'bg-gray-100 text-gray-500 border border-gray-200',
+};
+
 /** 残ポイントから推定スプリント数を計算する */
 function estimatedSprints(
     remainingPoints: number,
@@ -71,10 +85,21 @@ function estimatedHours(
     return (sprints * teamDailyHours * workingDays).toString();
 }
 
+/** due_date までの残り日数を計算する（過去日は負数） */
+function daysUntilDue(dueDateStr: string): number {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDateStr);
+    due.setHours(0, 0, 0, 0);
+    return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 interface EpicFormData {
     title: string;
     description: string;
     status: string;
+    due_date: string;
+    priority: string;
 }
 
 /** 当月の開始日・終了日を YYYY-MM-DD 形式で返す */
@@ -88,9 +113,39 @@ function currentMonthRange(): { from: string; to: string } {
     };
 }
 
+type SortKey = 'due_date' | 'estimated_hours' | 'priority' | 'none';
+type TabKey = 'with_due' | 'without_due';
+
+/** 優先度を数値に変換してソートに使う（小さい値が先） */
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
+    if (sortKey === 'none') {
+        return epics;
+    }
+    return [...epics].sort((a, b) => {
+        if (sortKey === 'due_date') {
+            // due_date なしは末尾
+            if (!a.due_date && !b.due_date) return 0;
+            if (!a.due_date) return 1;
+            if (!b.due_date) return -1;
+            return a.due_date.localeCompare(b.due_date);
+        }
+        if (sortKey === 'estimated_hours') {
+            return (b.estimated_hours ?? 0) - (a.estimated_hours ?? 0);
+        }
+        if (sortKey === 'priority') {
+            return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
+        }
+        return 0;
+    });
+}
+
 export default function EpicsIndex({ epics, estimation }: Props) {
     const [showForm, setShowForm] = useState(false);
     const [editingEpic, setEditingEpic] = useState<EpicRow | null>(null);
+    const [activeTab, setActiveTab] = useState<TabKey>('with_due');
+    const [sortKey, setSortKey] = useState<SortKey>('due_date');
 
     const defaultRange = currentMonthRange();
     const [exportFrom, setExportFrom] = useState(defaultRange.from);
@@ -109,6 +164,8 @@ export default function EpicsIndex({ epics, estimation }: Props) {
             title: '',
             description: '',
             status: 'planning',
+            due_date: '',
+            priority: 'medium',
         });
 
     const openCreate = () => {
@@ -122,6 +179,8 @@ export default function EpicsIndex({ epics, estimation }: Props) {
             title: epic.title,
             description: epic.description ?? '',
             status: epic.status,
+            due_date: epic.due_date ?? '',
+            priority: epic.priority,
         });
         setEditingEpic(epic);
         setShowForm(true);
@@ -152,6 +211,13 @@ export default function EpicsIndex({ epics, estimation }: Props) {
         }
         router.delete(epicRoutes.destroy({ epic: epic.id }).url);
     };
+
+    const withDue = epics.filter((e) => e.due_date !== null);
+    const withoutDue = epics.filter((e) => e.due_date === null);
+    const displayedEpics = sortEpics(
+        activeTab === 'with_due' ? withDue : withoutDue,
+        sortKey,
+    );
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -263,21 +329,62 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                     className="w-full rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
                                 />
                             </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-medium">
-                                    ステータス
-                                </label>
-                                <select
-                                    value={data.status}
-                                    onChange={(e) =>
-                                        setData('status', e.target.value)
-                                    }
-                                    className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
-                                >
-                                    <option value="planning">計画中</option>
-                                    <option value="in_progress">進行中</option>
-                                    <option value="done">完了</option>
-                                </select>
+                            <div className="flex flex-wrap gap-4">
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        ステータス
+                                    </label>
+                                    <select
+                                        value={data.status}
+                                        onChange={(e) =>
+                                            setData('status', e.target.value)
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                    >
+                                        <option value="planning">計画中</option>
+                                        <option value="in_progress">進行中</option>
+                                        <option value="done">完了</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        優先度
+                                    </label>
+                                    <select
+                                        value={data.priority}
+                                        onChange={(e) =>
+                                            setData('priority', e.target.value)
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                    >
+                                        <option value="high">高</option>
+                                        <option value="medium">中</option>
+                                        <option value="low">低</option>
+                                    </select>
+                                    {errors.priority && (
+                                        <p className="mt-1 text-xs text-red-500">
+                                            {errors.priority}
+                                        </p>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        リリース予定日（任意）
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={data.due_date}
+                                        onChange={(e) =>
+                                            setData('due_date', e.target.value)
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                    />
+                                    {errors.due_date && (
+                                        <p className="mt-1 text-xs text-red-500">
+                                            {errors.due_date}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex gap-2">
                                 <button
@@ -299,11 +406,59 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                     </div>
                 )}
 
+                {/* タブ + ソート */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    {/* タブ: due_date あり / なし */}
+                    <div className="flex rounded-lg border border-sidebar-border/70 p-0.5 text-sm">
+                        <button
+                            onClick={() => setActiveTab('with_due')}
+                            className={`rounded-md px-3 py-1.5 transition-colors ${
+                                activeTab === 'with_due'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-muted/50'
+                            }`}
+                        >
+                            リリース日あり
+                            <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-xs">
+                                {withDue.length}
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('without_due')}
+                            className={`rounded-md px-3 py-1.5 transition-colors ${
+                                activeTab === 'without_due'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-muted/50'
+                            }`}
+                        >
+                            リリース日未定
+                            <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-xs">
+                                {withoutDue.length}
+                            </span>
+                        </button>
+                    </div>
+
+                    {/* ソートセレクタ */}
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-xs text-muted-foreground">ソート:</span>
+                        <select
+                            value={sortKey}
+                            onChange={(e) => setSortKey(e.target.value as SortKey)}
+                            className="rounded-lg border border-sidebar-border/70 bg-background px-2 py-1 text-xs"
+                        >
+                            <option value="due_date">リリース日順</option>
+                            <option value="priority">優先度順</option>
+                            <option value="estimated_hours">予定工数（多い順）</option>
+                            <option value="none">デフォルト</option>
+                        </select>
+                    </div>
+                </div>
+
                 {/* エピック（案件）一覧 */}
                 <div className="rounded-xl border border-sidebar-border/70 bg-card">
-                    {epics.length > 0 ? (
+                    {displayedEpics.length > 0 ? (
                         <ul className="divide-y divide-sidebar-border/50">
-                            {epics.map((epic) => {
+                            {displayedEpics.map((epic) => {
                                 const remaining =
                                     epic.total_points - epic.completed_points;
                                 const progress =
@@ -314,18 +469,24 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                                   100,
                                           )
                                         : 0;
+                                const days = epic.due_date ? daysUntilDue(epic.due_date) : null;
 
                                 return (
                                     <li key={epic.id} className="px-6 py-4">
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {/* 優先度バッジ */}
+                                                    <span
+                                                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_CLASSES[epic.priority] ?? ''}`}
+                                                    >
+                                                        ↑{PRIORITY_LABELS[epic.priority] ?? epic.priority}
+                                                    </span>
+                                                    {/* ステータスバッジ */}
                                                     <span
                                                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? ''}`}
                                                     >
-                                                        {STATUS_LABELS[
-                                                            epic.status
-                                                        ] ?? epic.status}
+                                                        {STATUS_LABELS[epic.status] ?? epic.status}
                                                     </span>
                                                     <span className="font-medium">
                                                         {epic.title}
@@ -335,6 +496,37 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                                     <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                                                         {epic.description}
                                                     </p>
+                                                )}
+
+                                                {/* リリース予定日 + 残り日数 */}
+                                                {epic.due_date && (
+                                                    <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+                                                        <span className="text-muted-foreground">
+                                                            リリース予定:
+                                                        </span>
+                                                        <span className="font-medium">
+                                                            {epic.due_date}
+                                                        </span>
+                                                        {days !== null && (
+                                                            <span
+                                                                className={`rounded px-1.5 py-0.5 font-semibold ${
+                                                                    days < 0
+                                                                        ? 'bg-red-100 text-red-600'
+                                                                        : days <= 7
+                                                                          ? 'bg-orange-100 text-orange-600'
+                                                                          : days <= 30
+                                                                            ? 'bg-yellow-100 text-yellow-600'
+                                                                            : 'bg-muted text-muted-foreground'
+                                                                }`}
+                                                            >
+                                                                {days < 0
+                                                                    ? `${Math.abs(days)}日超過`
+                                                                    : days === 0
+                                                                      ? '本日'
+                                                                      : `残${days}日`}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 )}
 
                                                 {/* 進捗バー */}
@@ -436,7 +628,9 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                         </ul>
                     ) : (
                         <p className="px-6 py-4 text-sm text-muted-foreground">
-                            エピック（案件）がありません
+                            {activeTab === 'with_due'
+                                ? 'リリース予定日が設定された案件がありません'
+                                : 'リリース予定日が未定の案件がありません'}
                         </p>
                     )}
                 </div>

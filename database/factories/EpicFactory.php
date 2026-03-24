@@ -21,6 +21,8 @@ class EpicFactory extends Factory
             'title' => fake()->sentence(4),
             'description' => fake()->optional()->paragraph(),
             'status' => fake()->randomElement(['planning', 'in_progress', 'done']),
+            'due_date' => null,
+            'priority' => fake()->randomElement(['high', 'medium', 'low']),
         ];
     }
 }

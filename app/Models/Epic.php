@@ -7,10 +7,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['title', 'description', 'status'])]
+#[Fillable(['title', 'description', 'status', 'due_date', 'priority'])]
 class Epic extends Model
 {
     use HasFactory;
+
+    /** @var array<string, string> */
+    protected $casts = [
+        'due_date' => 'date:Y-m-d',
+    ];
 
     public function issues(): HasMany
     {
