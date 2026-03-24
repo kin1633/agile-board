@@ -27,6 +27,33 @@ class GitHubSyncService
     ) {}
 
     /**
+     * 認証ユーザーがアクセス可能な GitHub リポジトリ一覧を返す。
+     *
+     * リポジトリ追加時の候補として使用する。
+     *
+     * @return array<int, array{full_name: string, owner: string, name: string}>
+     */
+    public function listUserRepositories(string $githubToken): array
+    {
+        $client = $this->makeClient($githubToken);
+
+        $repos = $this->fetchAllPages($client, 'user/repos', [
+            'sort' => 'updated',
+            'per_page' => 100,
+        ]);
+
+        return collect($repos)
+            ->map(fn ($repo) => [
+                'full_name' => $repo['full_name'],
+                'owner' => $repo['owner']['login'],
+                'name' => $repo['name'],
+            ])
+            ->sortBy('full_name')
+            ->values()
+            ->all();
+    }
+
+    /**
      * 全アクティブリポジトリを同期する。
      */
     public function syncAll(string $githubToken): void
