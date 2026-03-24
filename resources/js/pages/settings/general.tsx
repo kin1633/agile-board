@@ -1,4 +1,5 @@
 import { Head, useForm } from '@inertiajs/react';
+import AppearanceTabs from '@/components/appearance-tabs';
 import AppLayout from '@/layouts/app-layout';
 import { general as generalRoute } from '@/routes/settings';
 import { update as generalUpdate } from '@/routes/settings/general';
@@ -35,6 +36,14 @@ export default function GeneralSettings({ hoursPerPersonDay }: Props) {
                 </div>
 
                 <div className="rounded-xl border border-sidebar-border/70 bg-card p-6">
+                    <div className="mb-6">
+                        <p className="mb-2 text-sm font-medium">外観</p>
+                        <p className="mb-3 text-xs text-muted-foreground">
+                            ライト・ダーク・システム連動を切り替えられます
+                        </p>
+                        <AppearanceTabs />
+                    </div>
+                    <hr className="mb-6 border-sidebar-border/50" />
                     <form
                         onSubmit={handleSubmit}
                         className="flex flex-col gap-4"
