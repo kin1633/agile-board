@@ -87,7 +87,8 @@ class EpicController extends Controller
                 'id' => $issue->id,
                 'title' => $issue->title,
                 'state' => $issue->state,
-                'assignee_login' => $issue->assignee_login,
+                // Story の担当者はタスクの担当者を集約して表示する
+                'assignees' => $issue->subIssues->pluck('assignee_login')->filter()->unique()->values()->all(),
                 'story_points' => $issue->story_points,
                 'exclude_velocity' => $issue->exclude_velocity,
                 'estimated_hours' => $storyEstimated > 0 ? (float) round($storyEstimated, 2) : null,
@@ -103,6 +104,14 @@ class EpicController extends Controller
             ];
         })->values()->all();
 
+        // Epic の担当者 = 配下の全タスクの担当者をユニークで集約する
+        $epicAssignees = $epic->issues
+            ->flatMap(fn ($issue) => $issue->subIssues->pluck('assignee_login'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         return [
             'id' => $epic->id,
             'title' => $epic->title,
@@ -112,6 +121,7 @@ class EpicController extends Controller
             'completed_points' => $completedPoints,
             'open_issues' => $openIssues,
             'total_issues' => $totalIssues,
+            'assignees' => $epicAssignees,
             'estimated_hours' => $epicEstimated > 0 ? (float) round($epicEstimated, 2) : null,
             'actual_hours' => $epicActual > 0 ? (float) round($epicActual, 2) : null,
             'issues' => $formattedIssues,
