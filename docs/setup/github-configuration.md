@@ -4,11 +4,57 @@
 
 ---
 
-## 1. マイルストーン（= スプリント）の作成
+## スプリント同期の2つのモード
 
-アプリはGitHubマイルストーンをスプリントとして同期します。
+このアプリは2つのモードでスプリントを同期します。
 
-**作成手順:**
+| モード | 条件 | スプリントの元データ |
+|--------|------|---------------------|
+| **Iteration モード** | リポジトリ設定で `GitHub Project Number` を設定済み | GitHub Projects の Iteration フィールド |
+| **Milestone モード** | `GitHub Project Number` 未設定（デフォルト） | GitHub マイルストーン |
+
+どちらのモードでも、マイルストーンは独立したページ（マイルストーン一覧）で表示されます。
+
+---
+
+## Iteration モード（推奨）
+
+### 1. GitHub Projects v2 の作成
+
+1. GitHub リポジトリ or Organization → `Projects` → `New project`
+2. `Board` または `Table` テンプレートを選択して作成
+3. 左サイドバー `+ Add field` → `Iteration` を追加
+4. Iteration フィールド名（例: `Sprint`）と期間（週単位）を設定
+
+### 2. アプリにプロジェクト番号を登録
+
+1. GitHub Projects の URL からプロジェクト番号を確認する
+   - 例: `https://github.com/orgs/myorg/projects/5` → プロジェクト番号は `5`
+2. アプリの「設定 → リポジトリ」画面を開く
+3. 対象リポジトリの `Project #` 列に番号を入力して保存
+
+### 3. Iteration（スプリント）の追加
+
+1. GitHub Projects のボード or テーブルを開く
+2. Iteration フィールドの設定から `Add iteration` → 期間を設定
+3. Issue を Iteration にアサインする
+
+### 4. 同期
+
+1. アプリのナビバー「GitHub同期」ボタンを押す
+2. スプリントが Iteration ベースで作成される
+3. スプリント詳細画面から `start_date`・`working_days` を調整
+
+> **OAuth スコープについて:** Iteration モードでは GitHub Projects の読み取りに `project` スコープが必要です。初回ログイン以降に本機能を有効にした場合は、一度ログアウト → 再ログインで再認証してください。
+
+---
+
+## Milestone モード（後方互換）
+
+`GitHub Project Number` を設定しない場合、従来どおりマイルストーンをスプリントとして同期します。
+
+### 1. マイルストーンの作成
+
 1. リポジトリ → `Issues` → `Milestones` → `New milestone`
 2. 以下の形式で設定する
 
@@ -24,7 +70,7 @@
 
 ---
 
-## 2. ラベルの整備
+## ラベルの整備
 
 アプリはラベルを同期します。以下を統一して作成しておくと管理しやすくなります。
 
@@ -40,7 +86,7 @@
 
 ---
 
-## 3. Issue テンプレート
+## Issue テンプレート
 
 `.github/ISSUE_TEMPLATE/` に3種類のテンプレートが用意されています。
 
@@ -55,21 +101,9 @@ Issueを作成したらアプリ側でストーリーポイントを設定して
 
 ---
 
-## 4. 新規スプリントの開始フロー
-
-1. GitHub でマイルストーンを作成（Due date 必須）
-2. Issueを作成してマイルストーンにアサイン
-3. アプリのナビバー「GitHub同期」ボタンを押す
-4. ダッシュボードにスプリントが表示されることを確認
-5. スプリント詳細画面でストーリーポイントを設定
-
----
-
-## 5. ブランチ保護（推奨）
+## ブランチ保護（推奨）
 
 `Settings` → `Branches` → `main` に以下を設定:
 
 - Require pull request reviews before merging
 - Require status checks to pass
-
-GitHub Projects との二重管理を避けるため、このアプリを利用する場合は GitHub Projects の使用は不要です。

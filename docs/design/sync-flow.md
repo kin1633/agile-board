@@ -3,7 +3,9 @@
 ## 概要
 
 「GitHub 同期」ボタンを押すと `POST /sync` が呼ばれ、`GitHubSyncService` が実行されます。
-アクティブなリポジトリ全てを対象に、マイルストーン・Issue・ラベルを同期します。
+アクティブなリポジトリ全てを対象に、スプリント・Issue・ラベルを同期します。
+
+リポジトリに `github_project_number` が設定されているかどうかで、スプリントの同期元が変わります。
 
 ---
 
@@ -13,19 +15,48 @@
 POST /sync (SyncController)
   └─ GitHubSyncService::syncAll(githubToken)
       └─ Repository::where('active', true) の全リポジトリに対して繰り返す
+          │
           ├─ syncMilestones()
-          │   └─ GitHub API: GET /repos/{owner}/{repo}/milestones?state=all
+          │   └─ GitHub REST API: GET /repos/{owner}/{repo}/milestones?state=all
           │       ├─ Milestone を upsert（github_milestone_id で識別）
-          │       ├─ Sprint を upsert（既存レコードの start_date/working_days は保護）
-          │       └─ syncIssuesForMilestone()
-          │           └─ GitHub API: GET /repos/{owner}/{repo}/issues?milestone={number}
-          │               └─ Issue を upsert（story_points/exclude_velocity は保護）
+          │       │
+          │       └─ [Milestone モードのみ] syncSprintForMilestone()
+          │           ├─ Sprint を upsert（既存レコードの start_date/working_days は保護）
+          │           └─ syncIssuesForMilestone()
+          │               └─ GitHub REST API: GET /repos/{owner}/{repo}/issues?milestone={number}
+          │                   └─ Issue を upsert（story_points/exclude_velocity は保護）
+          │
+          ├─ [Iteration モードのみ] syncProjectIterations()
+          │   └─ GitHubGraphQLClient::fetchProjectIterationsWithItems()
+          │       └─ GitHub GraphQL API: POST https://api.github.com/graphql
+          │           ├─ projectV2.fields から IterationField を取得
+          │           │   → iterations（進行中） + completedIterations（完了済み）を列挙
+          │           └─ projectV2.items をカーソルページネーションで全件取得
+          │               → 各 Item の fieldValues から iterationId を抽出し Issue をグループ化
+          │
+          │   各 Iteration を Sprint として upsert（github_iteration_id で識別）
+          │       ├─ 新規: start_date = Iteration の startDate、working_days = 5（デフォルト）
+          │       └─ 既存: start_date / working_days は保護（上書きしない）
+          │
+          │   各 Iteration に属する Issue を syncIssuesForIteration() で upsert
+          │       └─ story_points / exclude_velocity は保護
+          │
           ├─ syncLabels()
-          │   └─ GitHub API: GET /repos/{owner}/{repo}/labels
+          │   └─ GitHub REST API: GET /repos/{owner}/{repo}/labels
           │       └─ Label を upsert
           │           └─ 各 Issue と Label の紐付けを更新（issue_labels）
+          │
           └─ Repository::update(['synced_at' => now()])
 ```
+
+### モード判定
+
+| 条件 | 動作 |
+|------|------|
+| `repositories.github_project_number` が NULL | **Milestone モード**: マイルストーンからスプリントを作成（後方互換） |
+| `repositories.github_project_number` が設定済み | **Iteration モード**: GitHub Projects の Iteration からスプリントを作成 |
+
+> Iteration モードでもマイルストーンは同期・保存されます。マイルストーン一覧ページで確認できます。
 
 ---
 
@@ -35,7 +66,7 @@ POST /sync (SyncController)
 
 | テーブル | カラム | 理由 |
 |---|---|---|
-| sprints | start_date | スプリント開始日は GitHub マイルストーンに存在しない |
+| sprints | start_date | アプリ側で手動設定する開始日 |
 | sprints | working_days | 稼働日数は GitHub に存在しない |
 | issues | story_points | GitHub Issue にストーリーポイントの概念がない |
 | issues | exclude_velocity | ベロシティ除外設定は GitHub に存在しない |
@@ -46,13 +77,19 @@ POST /sync (SyncController)
 
 ## ページネーション対応
 
-GitHub API は 1 リクエストあたり最大 100 件しか返しません。`fetchAllPages()` メソッドで `Link` ヘッダーを解析し、全ページを自動取得します。
+**REST API（Milestone・Issue・Label）:** `fetchAllPages()` メソッドで `Link` ヘッダーを解析し、全ページを自動取得します（100件/ページ）。
+
+**GraphQL API（Project Items）:** カーソルベースのページネーション（`after: $cursor`）で 100件ずつ全件取得します。
 
 ---
 
 ## エラーハンドリング
 
 同期中にエラーが発生した場合、Laravel の例外ハンドラーがログに記録します。フロントエンドにはエラーメッセージがフラッシュされます。
+
+GraphQL API 特有のエラー:
+- HTTP 非200 → `RequestException` に変換
+- レスポンス内 `errors` 配列 → `RuntimeException` に変換（メッセージに GitHub のエラー内容を含む）
 
 ---
 
