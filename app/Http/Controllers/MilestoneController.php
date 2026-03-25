@@ -23,7 +23,9 @@ class MilestoneController extends Controller
                 'state' => $m->state,
                 'repository' => [
                     'id' => $m->repository->id,
+                    'owner' => $m->repository->owner,
                     'full_name' => $m->repository->full_name,
+                    'github_project_number' => $m->repository->github_project_number,
                 ],
             ]);
 
