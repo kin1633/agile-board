@@ -68,7 +68,7 @@ class GitHubGraphQLClient
      * ProjectV2 の Iteration フィールドと各 Iteration に属する Issue を取得する。
      *
      * @return array{
-     *   iterations: array<int, array{id: string, title: string, startDate: string, duration: int}>,
+     *   iterationsByField: array<string, array<int, array{id: string, title: string, startDate: string, duration: int}>>,
      *   issuesByIteration: array<string, array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, labels: array<int, string>}>>
      * }
      */
@@ -77,21 +77,25 @@ class GitHubGraphQLClient
         int $projectNumber,
         string $token
     ): array {
-        $iterations = $this->fetchIterationFields($owner, $projectNumber, $token);
-        $issuesByIteration = $this->fetchProjectItems($owner, $projectNumber, $token, $iterations);
+        $iterationsByField = $this->fetchIterationFields($owner, $projectNumber, $token);
+
+        // 全フィールドのイテレーションをフラット化して items 取得に渡す
+        $allIterations = array_merge(...array_values($iterationsByField));
+
+        $issuesByIteration = $this->fetchProjectItems($owner, $projectNumber, $token, $allIterations);
 
         return [
-            'iterations' => $iterations,
+            'iterationsByField' => $iterationsByField,
             'issuesByIteration' => $issuesByIteration,
         ];
     }
 
     /**
-     * ProjectV2 の IterationField から Iteration の一覧を取得する。
+     * ProjectV2 の IterationField からフィールド名別の Iteration 一覧を取得する。
      *
      * organization → user の順でフォールバックして owner 種別を解決する。
      *
-     * @return array<int, array{id: string, title: string, startDate: string, duration: int}>
+     * @return array<string, array<int, array{id: string, title: string, startDate: string, duration: int}>>
      */
     private function fetchIterationFields(
         string $owner,
@@ -139,7 +143,10 @@ class GitHubGraphQLClient
         ], $token);
 
         $fields = $data[$ownerType]['projectV2']['fields']['nodes'] ?? [];
-        $iterations = [];
+
+        // フィールド名をキーにしてイテレーション一覧をグループ化する
+        // 例: ['Sprint' => [...], 'Monthly' => [...]]
+        $iterationsByField = [];
 
         foreach ($fields as $field) {
             // IterationField のみ configuration キーを持つ
@@ -147,11 +154,13 @@ class GitHubGraphQLClient
                 continue;
             }
 
+            $fieldName = $field['name'];
             $active = $field['configuration']['iterations'] ?? [];
             $completed = $field['configuration']['completedIterations'] ?? [];
+            $iterationsByField[$fieldName] = [];
 
             foreach (array_merge($active, $completed) as $iteration) {
-                $iterations[] = [
+                $iterationsByField[$fieldName][] = [
                     'id' => $iteration['id'],
                     'title' => $iteration['title'],
                     'startDate' => $iteration['startDate'],
@@ -160,7 +169,7 @@ class GitHubGraphQLClient
             }
         }
 
-        return $iterations;
+        return $iterationsByField;
     }
 
     /**
