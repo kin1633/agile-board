@@ -17,12 +17,16 @@ class EpicController extends Controller
 {
     public function index(): Response
     {
+        $estimation = $this->buildEstimation();
+
         // サブイシュー（タスク）の工数集計のため subIssues を eager load する
-        $epics = Epic::with('issues.subIssues')->get()->map(fn (Epic $epic) => $this->formatEpic($epic));
+        $epics = Epic::with('issues.subIssues')->get()->map(
+            fn (Epic $epic) => $this->formatEpic($epic, $estimation['team_daily_hours'])
+        );
 
         return Inertia::render('epics/index', [
             'epics' => $epics,
-            'estimation' => $this->buildEstimation(),
+            'estimation' => $estimation,
         ]);
     }
 
@@ -33,6 +37,7 @@ class EpicController extends Controller
             'description' => ['nullable', 'string'],
             'status' => ['required', 'string', 'in:planning,in_progress,done'],
             'due_date' => ['nullable', 'date'],
+            'started_at' => ['nullable', 'date'],
             'priority' => ['required', 'string', 'in:high,medium,low'],
         ]);
 
@@ -48,6 +53,7 @@ class EpicController extends Controller
             'description' => ['nullable', 'string'],
             'status' => ['required', 'string', 'in:planning,in_progress,done'],
             'due_date' => ['nullable', 'date'],
+            'started_at' => ['nullable', 'date'],
             'priority' => ['required', 'string', 'in:high,medium,low'],
         ]);
 
@@ -181,9 +187,13 @@ class EpicController extends Controller
      * - Story: parent_issue_id が NULL の Issue（epic_id で Epic に紐付く）
      * - Epic の工数合計 = 配下の全 Story の Task 工数合計
      *
+     * 着手日目安: due_date から予定工数÷チーム日次工数（営業日）を遡った日付。
+     * team_daily_hours が 0 の場合（メンバー未登録）は null を返す。
+     *
+     * @param  int  $teamDailyHours  チーム全員の daily_hours 合計
      * @return array<string, mixed>
      */
-    private function formatEpic(Epic $epic): array
+    private function formatEpic(Epic $epic, int $teamDailyHours): array
     {
         $totalPoints = (int) $epic->issues->sum('story_points');
         $completedPoints = (int) $epic->issues->where('state', 'closed')->sum('story_points');
@@ -229,12 +239,24 @@ class EpicController extends Controller
             ->values()
             ->all();
 
+        // 着手日目安: due_date から ceil(予定工数 / チーム日次工数) 営業日遡った日付
+        // team_daily_hours が 0（メンバー未登録）や予定工数・期日が未設定の場合は null
+        $estimatedStartDate = null;
+        if ($epic->due_date && $epicEstimated > 0 && $teamDailyHours > 0) {
+            $daysNeeded = (int) ceil($epicEstimated / $teamDailyHours);
+            $estimatedStartDate = Carbon::parse($epic->due_date)
+                ->subWeekdays($daysNeeded)
+                ->toDateString();
+        }
+
         return [
             'id' => $epic->id,
             'title' => $epic->title,
             'description' => $epic->description,
             'status' => $epic->status,
             'due_date' => $epic->due_date?->toDateString(),
+            'started_at' => $epic->started_at?->toDateString(),
+            'estimated_start_date' => $estimatedStartDate,
             'priority' => $epic->priority ?? 'medium',
             'total_points' => $totalPoints,
             'completed_points' => $completedPoints,

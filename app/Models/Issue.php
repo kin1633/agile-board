@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable([
     'repository_id', 'sprint_id', 'epic_id', 'parent_issue_id', 'github_issue_number',
-    'title', 'state', 'closed_at', 'assignee_login', 'story_points', 'exclude_velocity',
+    'title', 'state', 'project_status', 'closed_at', 'assignee_login', 'story_points', 'exclude_velocity',
     'estimated_hours', 'actual_hours', 'synced_at',
 ])]
 class Issue extends Model

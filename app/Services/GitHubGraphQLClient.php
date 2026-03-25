@@ -178,9 +178,10 @@ class GitHubGraphQLClient
      * カーソルベースのページネーション（100件ずつ）で全件取得する。
      * 複数リポジトリが同一プロジェクトに紐付く場合を考慮し、
      * Issue の所属リポジトリ情報（repository.owner.login / name）も取得する。
+     * GitHub Projects の Status フィールド値（SingleSelectField）も取得する。
      *
      * @param  array<int, array{id: string}>  $iterations  既知の Iteration 一覧（ID 集合の構築に使用）
-     * @return array<string, array<int, array{number: int, title: string, state: string, closed_at: string|null, assignee: string|null, labels: array<int, string>, repo_owner: string, repo_name: string}>>
+     * @return array<string, array<int, array{number: int, title: string, state: string, project_status: string|null, closed_at: string|null, assignee: string|null, labels: array<int, string>, repo_owner: string, repo_name: string}>>
      */
     private function fetchProjectItems(
         string $owner,
@@ -224,7 +225,15 @@ class GitHubGraphQLClient
                                     ... on ProjectV2ItemFieldIterationValue {
                                         iterationId
                                     }
-                                }
+                                    # Status フィールド（SingleSelectField）の値を取得する
+                                    ... on ProjectV2ItemFieldSingleSelectValue {
+                                        name
+                                        field {
+                                            ... on ProjectV2SingleSelectField {
+                                                name
+                                            }
+                                        }
+                                    }
                             }
                         }
                     }
@@ -255,7 +264,8 @@ class GitHubGraphQLClient
                     continue;
                 }
 
-                $iterationId = $this->extractIterationId($item['fieldValues']['nodes'], $knownIterationIds);
+                $fieldValueNodes = $item['fieldValues']['nodes'];
+                $iterationId = $this->extractIterationId($fieldValueNodes, $knownIterationIds);
 
                 if ($iterationId === null) {
                     continue;
@@ -267,6 +277,8 @@ class GitHubGraphQLClient
                     'title' => $content['title'],
                     // GitHub GraphQL は "OPEN" / "CLOSED" の大文字
                     'state' => strtolower($content['state']),
+                    // GitHub Projects の Status フィールド値（例: "In Progress"）
+                    'project_status' => $this->extractSingleSelectValue($fieldValueNodes, 'Status'),
                     'closed_at' => $content['closedAt'] ?? null,
                     'assignee' => $content['assignees']['nodes'][0]['login'] ?? null,
                     'labels' => collect($content['labels']['nodes'])->pluck('name')->all(),
@@ -424,6 +436,25 @@ class GitHubGraphQLClient
         }
 
         return $this->ownerTypeCache[$owner] = $type;
+    }
+
+    /**
+     * fieldValues から指定フィールド名の SingleSelectField の値を返す。
+     *
+     * GitHub Projects の Status などの SingleSelectField に使用する。
+     *
+     * @param  array<int, mixed>  $fieldValueNodes
+     */
+    private function extractSingleSelectValue(array $fieldValueNodes, string $fieldName): ?string
+    {
+        foreach ($fieldValueNodes as $node) {
+            // SingleSelectValue は name と field.name を持つ
+            if (isset($node['name']) && isset($node['field']['name']) && $node['field']['name'] === $fieldName) {
+                return $node['name'];
+            }
+        }
+
+        return null;
     }
 
     /**
