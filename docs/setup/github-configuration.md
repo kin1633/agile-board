@@ -13,7 +13,7 @@
 | **Iteration モード** | リポジトリ設定で `GitHub Project Number` を設定済み | GitHub Projects の Iteration フィールド |
 | **Milestone モード** | `GitHub Project Number` 未設定（デフォルト） | GitHub マイルストーン |
 
-どちらのモードでも、マイルストーンは独立したページ（マイルストーン一覧）で表示されます。
+Iteration モードでは REST マイルストーン API を使用しません。スプリントと月次マイルストーンを GitHub Projects の Iteration フィールドで一元管理します。
 
 ---
 
@@ -23,8 +23,10 @@
 
 1. GitHub リポジトリ or Organization → `Projects` → `New project`
 2. `Board` または `Table` テンプレートを選択して作成
-3. 左サイドバー `+ Add field` → `Iteration` を追加
-4. Iteration フィールド名（例: `Sprint`）と期間（週単位）を設定
+3. 左サイドバー `+ Add field` → `Iteration` を追加し、**フィールド名を `Sprint`** に設定（週単位の期間を指定）
+4. 月次目標も管理する場合は、さらに `+ Add field` → `Iteration` を追加し、**フィールド名を `Monthly`** に設定
+
+> フィールド名は `Sprint` / `Monthly` がデフォルト値です。別名にした場合は一般設定（`/settings/general`）で変更してください。
 
 ### 2. アプリにプロジェクト番号を登録
 

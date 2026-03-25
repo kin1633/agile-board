@@ -11,7 +11,8 @@ repositories
 
 milestones
   id, repository_id → repositories
-  github_milestone_id, title, due_on, state, synced_at
+  github_milestone_id (nullable), github_iteration_id (nullable, unique)
+  title, due_on, state, synced_at
 
 sprints
   id, milestone_id → milestones (nullable)
@@ -58,6 +59,18 @@ members
 | カラム | 型 | 説明 |
 |---|---|---|
 | github_project_number | int\|null | GitHub Projects v2 のプロジェクト番号。設定すると Iteration モードで同期 |
+
+### milestones
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| github_milestone_id | int\|null | Milestone モード時の GitHub マイルストーン ID。Iteration モードでは NULL |
+| github_iteration_id | string\|null | Iteration モード時の GitHub Iteration ID（Monthly フィールド）。一意 |
+| title | string | マイルストーン名 |
+| due_on | date\|null | 期限日。Iteration モードでは `startDate + duration週 - 1日` で自動計算 |
+| state | string | `open` / `closed` |
+
+> `github_milestone_id` と `github_iteration_id` はどちらか一方のみ持ちます。
 
 ### sprints
 
@@ -119,9 +132,11 @@ repositories ─→ milestones ─→ sprints ─→ issues
 ### Iteration モード（`github_project_number` 設定済み）
 
 ```
-repositories ─→ sprints（github_iteration_id で識別）─→ issues
-              └─→ milestones（独立表示、スプリントとは連携しない）
+repositories ─→ sprints（Sprint フィールド, github_iteration_id で識別）─→ issues
+              └─→ milestones（Monthly フィールド, github_iteration_id で識別）
 ```
+
+REST マイルストーン API は使用しません。Sprint / Monthly の2つの Iteration フィールドでそれぞれ管理します。
 
 ---
 
