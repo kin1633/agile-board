@@ -14,6 +14,10 @@ interface EpicRow {
     description: string | null;
     status: string;
     due_date: string | null;
+    /** 着手日（手動設定 or 同期時自動設定）*/
+    started_at: string | null;
+    /** 着手日目安（due_date - ceil(予定工数/チーム日次工数) 営業日、サーバー側計算）*/
+    estimated_start_date: string | null;
     priority: 'high' | 'medium' | 'low';
     total_points: number;
     completed_points: number;
@@ -91,7 +95,9 @@ function daysUntilDue(dueDateStr: string): number {
     today.setHours(0, 0, 0, 0);
     const due = new Date(dueDateStr);
     due.setHours(0, 0, 0, 0);
-    return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return Math.round(
+        (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
 }
 
 interface EpicFormData {
@@ -99,6 +105,7 @@ interface EpicFormData {
     description: string;
     status: string;
     due_date: string;
+    started_at: string;
     priority: string;
 }
 
@@ -135,7 +142,10 @@ function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
             return (b.estimated_hours ?? 0) - (a.estimated_hours ?? 0);
         }
         if (sortKey === 'priority') {
-            return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
+            return (
+                (PRIORITY_ORDER[a.priority] ?? 1) -
+                (PRIORITY_ORDER[b.priority] ?? 1)
+            );
         }
         return 0;
     });
@@ -165,6 +175,7 @@ export default function EpicsIndex({ epics, estimation }: Props) {
             description: '',
             status: 'planning',
             due_date: '',
+            started_at: '',
             priority: 'medium',
         });
 
@@ -180,6 +191,7 @@ export default function EpicsIndex({ epics, estimation }: Props) {
             description: epic.description ?? '',
             status: epic.status,
             due_date: epic.due_date ?? '',
+            started_at: epic.started_at ?? '',
             priority: epic.priority,
         });
         setEditingEpic(epic);
@@ -342,7 +354,9 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                         className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
                                     >
                                         <option value="planning">計画中</option>
-                                        <option value="in_progress">進行中</option>
+                                        <option value="in_progress">
+                                            進行中
+                                        </option>
                                         <option value="done">完了</option>
                                     </select>
                                 </div>
@@ -382,6 +396,27 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                     {errors.due_date && (
                                         <p className="mt-1 text-xs text-red-500">
                                             {errors.due_date}
+                                        </p>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                        着手日（任意）
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={data.started_at}
+                                        onChange={(e) =>
+                                            setData(
+                                                'started_at',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                    />
+                                    {errors.started_at && (
+                                        <p className="mt-1 text-xs text-red-500">
+                                            {errors.started_at}
                                         </p>
                                     )}
                                 </div>
@@ -440,15 +475,21 @@ export default function EpicsIndex({ epics, estimation }: Props) {
 
                     {/* ソートセレクタ */}
                     <div className="flex items-center gap-2 text-sm">
-                        <span className="text-xs text-muted-foreground">ソート:</span>
+                        <span className="text-xs text-muted-foreground">
+                            ソート:
+                        </span>
                         <select
                             value={sortKey}
-                            onChange={(e) => setSortKey(e.target.value as SortKey)}
+                            onChange={(e) =>
+                                setSortKey(e.target.value as SortKey)
+                            }
                             className="rounded-lg border border-sidebar-border/70 bg-background px-2 py-1 text-xs"
                         >
                             <option value="due_date">リリース日順</option>
                             <option value="priority">優先度順</option>
-                            <option value="estimated_hours">予定工数（多い順）</option>
+                            <option value="estimated_hours">
+                                予定工数（多い順）
+                            </option>
                             <option value="none">デフォルト</option>
                         </select>
                     </div>
@@ -469,7 +510,9 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                                   100,
                                           )
                                         : 0;
-                                const days = epic.due_date ? daysUntilDue(epic.due_date) : null;
+                                const days = epic.due_date
+                                    ? daysUntilDue(epic.due_date)
+                                    : null;
 
                                 return (
                                     <li key={epic.id} className="px-6 py-4">
@@ -480,13 +523,18 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                                     <span
                                                         className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_CLASSES[epic.priority] ?? ''}`}
                                                     >
-                                                        ↑{PRIORITY_LABELS[epic.priority] ?? epic.priority}
+                                                        ↑
+                                                        {PRIORITY_LABELS[
+                                                            epic.priority
+                                                        ] ?? epic.priority}
                                                     </span>
                                                     {/* ステータスバッジ */}
                                                     <span
                                                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? ''}`}
                                                     >
-                                                        {STATUS_LABELS[epic.status] ?? epic.status}
+                                                        {STATUS_LABELS[
+                                                            epic.status
+                                                        ] ?? epic.status}
                                                     </span>
                                                     <span className="font-medium">
                                                         {epic.title}
@@ -512,9 +560,11 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                                                 className={`rounded px-1.5 py-0.5 font-semibold ${
                                                                     days < 0
                                                                         ? 'bg-red-100 text-red-600'
-                                                                        : days <= 7
+                                                                        : days <=
+                                                                            7
                                                                           ? 'bg-orange-100 text-orange-600'
-                                                                          : days <= 30
+                                                                          : days <=
+                                                                              30
                                                                             ? 'bg-yellow-100 text-yellow-600'
                                                                             : 'bg-muted text-muted-foreground'
                                                                 }`}
@@ -526,6 +576,32 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                                                       : `残${days}日`}
                                                             </span>
                                                         )}
+                                                    </div>
+                                                )}
+
+                                                {/* 着手日目安（予定工数 ÷ チーム稼働から逆算） */}
+                                                {epic.estimated_start_date && (
+                                                    <div className="mt-1 flex items-center gap-1.5 text-xs">
+                                                        <span className="text-muted-foreground">
+                                                            着手日目安:
+                                                        </span>
+                                                        <span className="font-medium text-blue-600">
+                                                            {
+                                                                epic.estimated_start_date
+                                                            }
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {/* 着手日（実績・手動 or 同期時自動設定） */}
+                                                {epic.started_at && (
+                                                    <div className="mt-1 flex items-center gap-1.5 text-xs">
+                                                        <span className="text-muted-foreground">
+                                                            着手日:
+                                                        </span>
+                                                        <span className="font-medium text-green-600">
+                                                            {epic.started_at}
+                                                        </span>
                                                     </div>
                                                 )}
 

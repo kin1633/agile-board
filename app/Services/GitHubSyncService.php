@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Epic;
 use App\Models\Issue;
 use App\Models\Label;
 use App\Models\Milestone;
@@ -62,6 +63,8 @@ class GitHubSyncService
 
     /**
      * 全アクティブリポジトリを同期する。
+     *
+     * 全リポジトリの同期完了後、Epic の着手日を自動設定する。
      */
     public function syncAll(string $githubToken): void
     {
@@ -70,6 +73,9 @@ class GitHubSyncService
         foreach ($repositories as $repository) {
             $this->syncRepository($repository, $githubToken);
         }
+
+        // Issue の project_status を元に Epic の started_at を自動設定する
+        $this->syncEpicStartDates();
     }
 
     /**
@@ -258,6 +264,8 @@ class GitHubSyncService
             $syncData = [
                 'title' => $data['title'],
                 'state' => $data['state'],
+                // GitHub Projects の Status フィールド値（着手日自動設定に使用）
+                'project_status' => $data['project_status'] ?? null,
                 'closed_at' => $data['closed_at'] ? Carbon::parse($data['closed_at']) : null,
                 'assignee_login' => $data['assignee'],
                 'sprint_id' => $sprint->id,
@@ -435,6 +443,30 @@ class GitHubSyncService
                     // 新規タスクはデフォルトでベロシティ除外（Story のみをベロシティ対象とする）
                     'exclude_velocity' => true,
                 ]));
+            }
+        }
+    }
+
+    /**
+     * Story Issue の project_status を元に Epic の started_at を自動設定する。
+     *
+     * started_at が未設定の Epic に紐づく Story（parent_issue_id IS NULL）のいずれかが
+     * "In Progress" ステータスになった場合、今日の日付を started_at にセットする。
+     * 既に started_at が設定済みの場合は上書きしない（手動設定を保護する）。
+     */
+    private function syncEpicStartDates(): void
+    {
+        $epics = Epic::whereNull('started_at')
+            ->with(['issues' => fn ($q) => $q->whereNull('parent_issue_id')])
+            ->get();
+
+        foreach ($epics as $epic) {
+            $hasInProgress = $epic->issues->contains(
+                fn (Issue $issue) => strcasecmp($issue->project_status ?? '', 'In Progress') === 0
+            );
+
+            if ($hasInProgress) {
+                $epic->update(['started_at' => now()->toDateString()]);
             }
         }
     }

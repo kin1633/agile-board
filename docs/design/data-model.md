@@ -20,14 +20,15 @@ sprints
   title, start_date*, working_days*, end_date, iteration_duration_days, state
 
 epics
-  id, title, description, status
+  id, title, description, status, due_date, priority
+  started_at (nullable), started_at は着手日（手動設定 or 同期時自動設定）
 
 issues
   id, repository_id → repositories
   sprint_id → sprints
   epic_id → epics
   parent_issue_id → issues (nullable, 自己参照)
-  github_issue_number, title, state, assignee_login
+  github_issue_number, title, state, project_status, assignee_login
   story_points*, exclude_velocity*, estimated_hours*, actual_hours*
   closed_at, synced_at
 
@@ -98,7 +99,21 @@ members
 | estimated_hours | decimal(8,2)\|null | **手動設定**。予定工数（Task Issue の工数管理に使用） |
 | actual_hours | decimal(8,2)\|null | **手動設定**。実績工数（Task Issue の工数管理に使用） |
 | state | string | `open` / `closed` |
+| project_status | string\|null | GitHub Projects の Status フィールド値（例: `In Progress`）。同期時に更新 |
 | closed_at | datetime | クローズされた日時（バーンダウン実績線に使用） |
+
+### epics
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| title | string | エピック名 |
+| description | text\|null | エピックの概要 |
+| status | string | `planning` / `in_progress` / `done` |
+| due_date | date\|null | リリース予定日 |
+| priority | string | `high` / `medium` / `low` |
+| started_at | date\|null | 着手日。手動設定またはGitHub同期時に自動設定（Issue の `project_status = 'In Progress'` が条件） |
+
+> `estimated_start_date`（着手日目安）はDBには保存されません。`due_date` / `estimated_hours` / `team_daily_hours` から毎回計算されます。
 
 ### Issue の種類（3階層）
 

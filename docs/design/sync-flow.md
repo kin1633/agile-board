@@ -62,6 +62,12 @@ POST /sync (SyncController)
           │           └─ 各 Issue と Label の紐付けを更新（issue_labels）
           │
           └─ Repository::update(['synced_at' => now()])
+      │
+      └─ syncEpicStartDates()
+          └─ started_at が未設定の Epic を対象に
+              └─ 配下の Story Issue（parent_issue_id IS NULL）に
+                 project_status = 'In Progress' のものがあれば
+                 → Epic.started_at = today() をセット（既設定は上書きしない）
 ```
 
 ### モード判定
@@ -89,6 +95,7 @@ Iteration モードでは REST Milestones API を**完全にスキップ**し、
 | issues | exclude_velocity | ベロシティ除外設定は GitHub に存在しない |
 | issues | estimated_hours | ユーザーがアプリ側で入力する予定工数 |
 | issues | actual_hours | ユーザーがアプリ側で入力する実績工数 |
+| epics | started_at | 手動設定された着手日は同期で上書きしない（未設定の場合のみ自動設定） |
 
 実装上は `updateOrCreate` 時に、既存レコードがある場合はこれらのカラムを `update` の対象から除外しています。
 
