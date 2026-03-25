@@ -16,11 +16,11 @@ POST /sync (SyncController)
   └─ GitHubSyncService::syncAll(githubToken)
       └─ Repository::where('active', true) の全リポジトリに対して繰り返す
           │
-          ├─ syncMilestones()
+          ├─ [Milestone モードのみ] syncMilestones()
           │   └─ GitHub REST API: GET /repos/{owner}/{repo}/milestones?state=all
           │       ├─ Milestone を upsert（github_milestone_id で識別）
           │       │
-          │       └─ [Milestone モードのみ] syncSprintForMilestone()
+          │       └─ syncSprintForMilestone()
           │           ├─ Sprint を upsert（既存レコードの start_date/working_days は保護）
           │           └─ syncIssuesForMilestone()
           │               └─ GitHub REST API: GET /repos/{owner}/{repo}/issues?milestone={number}
@@ -29,26 +29,32 @@ POST /sync (SyncController)
           ├─ [Iteration モードのみ] syncProjectIterations()
           │   └─ GitHubGraphQLClient::fetchProjectIterationsWithItems()
           │       └─ GitHub GraphQL API: POST https://api.github.com/graphql
-          │           ├─ projectV2.fields から IterationField を取得
-          │           │   → iterations（進行中） + completedIterations（完了済み）を列挙
+          │           ├─ projectV2.fields から IterationField をフィールド名別に取得
+          │           │   → ['Sprint' => [...], 'Monthly' => [...]] 形式で返す
+          │           │   → 各フィールド: iterations（進行中） + completedIterations（完了済み）
           │           └─ projectV2.items をカーソルページネーションで全件取得
           │               → 各 Item の fieldValues から iterationId を抽出し Issue をグループ化
           │
-          │   各 Iteration を Sprint として upsert（github_iteration_id で識別）
+          │   [Sprint フィールド] 各 Iteration を Sprint として upsert
+          │       ├─ github_iteration_id で識別
           │       ├─ 新規: start_date = Iteration の startDate、working_days = 5（デフォルト）
           │       └─ 既存: start_date / working_days は保護（上書きしない）
           │
-          │   各 Iteration に属する Issue を syncIssuesForIteration() で upsert
+          │   [Sprint フィールド] 各 Iteration に属する Issue を syncIssuesForIteration() で upsert
           │       ├─ story_points / exclude_velocity / estimated_hours / actual_hours は保護
           │       └─ repo_owner / repo_name で正しい repository_id に紐付け（マルチリポジトリ対応）
           │
-          │   各 Issue に対して syncSubIssues() でサブイシューを同期
+          │   [Sprint フィールド] 各 Issue に対して syncSubIssues() でサブイシューを同期
           │       └─ GitHubGraphQLClient::fetchIssueNodeId() で Issue の Node ID 取得
           │           └─ GitHubGraphQLClient::fetchSubIssues() でサブイシュー一覧取得
           │               ├─ GitHub Sub-issues Public Preview API（GraphQL-Features ヘッダー必要）
           │               ├─ 各サブイシューを parent_issue_id 付きで upsert
           │               ├─ estimated_hours / actual_hours は保護（ユーザー入力値を守る）
           │               └─ 新規サブイシューは exclude_velocity = true（デフォルト）
+          │
+          │   [Monthly フィールド] 各 Iteration を Milestone として upsert
+          │       ├─ github_iteration_id で識別（github_milestone_id は使用しない）
+          │       └─ due_on = startDate + duration週 - 1日 で自動計算
           │
           ├─ syncLabels()
           │   └─ GitHub REST API: GET /repos/{owner}/{repo}/labels
@@ -62,10 +68,12 @@ POST /sync (SyncController)
 
 | 条件 | 動作 |
 |------|------|
-| `repositories.github_project_number` が NULL | **Milestone モード**: マイルストーンからスプリントを作成（後方互換） |
-| `repositories.github_project_number` が設定済み | **Iteration モード**: GitHub Projects の Iteration からスプリントを作成 |
+| `repositories.github_project_number` が NULL | **Milestone モード**: REST マイルストーン → Sprint（後方互換） |
+| `repositories.github_project_number` が設定済み | **Iteration モード**: `Sprint` フィールド → Sprint、`Monthly` フィールド → Milestone |
 
-> Iteration モードでもマイルストーンは同期・保存されます。マイルストーン一覧ページで確認できます。
+Iteration モードでは REST Milestones API を**完全にスキップ**し、GitHub Projects の Iteration から Sprint と Milestone を一元管理します。
+
+フィールド名（`Sprint` / `Monthly`）は `settings` テーブルの `sprint_iteration_field` / `monthly_iteration_field` で変更できます（デフォルト値は SettingSeeder で投入）。
 
 ---
 

@@ -10,8 +10,10 @@ use Illuminate\Support\Facades\Http;
 function subIssueIterationData(int $issueNumber = 10): array
 {
     return [
-        'iterations' => [
-            ['id' => 'iter-sub1', 'title' => 'Sprint 1', 'startDate' => '2026-04-07', 'duration' => 2],
+        'iterationsByField' => [
+            'Sprint' => [
+                ['id' => 'iter-sub1', 'title' => 'Sprint 1', 'startDate' => '2026-04-07', 'duration' => 2],
+            ],
         ],
         'issuesByIteration' => [
             'iter-sub1' => [

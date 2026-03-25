@@ -32,6 +32,8 @@ class EpicController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'status' => ['required', 'string', 'in:planning,in_progress,done'],
+            'due_date' => ['nullable', 'date'],
+            'priority' => ['required', 'string', 'in:high,medium,low'],
         ]);
 
         Epic::create($validated);
@@ -45,6 +47,8 @@ class EpicController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'status' => ['required', 'string', 'in:planning,in_progress,done'],
+            'due_date' => ['nullable', 'date'],
+            'priority' => ['required', 'string', 'in:high,medium,low'],
         ]);
 
         $epic->update($validated);
@@ -230,6 +234,8 @@ class EpicController extends Controller
             'title' => $epic->title,
             'description' => $epic->description,
             'status' => $epic->status,
+            'due_date' => $epic->due_date?->toDateString(),
+            'priority' => $epic->priority ?? 'medium',
             'total_points' => $totalPoints,
             'completed_points' => $completedPoints,
             'open_issues' => $openIssues,

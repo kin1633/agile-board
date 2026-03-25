@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['repository_id', 'github_milestone_id', 'title', 'due_on', 'state', 'synced_at'])]
+#[Fillable(['repository_id', 'github_milestone_id', 'github_iteration_id', 'title', 'due_on', 'state', 'synced_at'])]
 class Milestone extends Model
 {
     use HasFactory;

@@ -62,6 +62,7 @@ test('エピックが作成できる', function () {
             'title' => '新規エピック',
             'description' => '説明文',
             'status' => 'planning',
+            'priority' => 'medium',
         ])
         ->assertRedirect(route('epics.index'));
 
@@ -88,11 +89,71 @@ test('エピックが更新できる', function () {
             'title' => '新タイトル',
             'description' => null,
             'status' => 'in_progress',
+            'priority' => 'high',
         ])
         ->assertRedirect(route('epics.index'));
 
     expect($epic->fresh()->title)->toBe('新タイトル')
         ->and($epic->fresh()->status)->toBe('in_progress');
+});
+
+test('due_date と priority を指定してエピックを作成できる', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('epics.store'), [
+            'title' => 'リリース案件',
+            'status' => 'planning',
+            'priority' => 'high',
+            'due_date' => '2026-06-30',
+        ])
+        ->assertRedirect(route('epics.index'));
+
+    $epic = Epic::where('title', 'リリース案件')->firstOrFail();
+    expect($epic->priority)->toBe('high')
+        ->and($epic->due_date->toDateString())->toBe('2026-06-30');
+});
+
+test('priority が無効値の場合バリデーションエラーになる', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('epics.store'), [
+            'title' => 'テスト',
+            'status' => 'planning',
+            'priority' => 'urgent', // 無効値
+        ])
+        ->assertSessionHasErrors(['priority']);
+});
+
+test('due_date が無効な日付の場合バリデーションエラーになる', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('epics.store'), [
+            'title' => 'テスト',
+            'status' => 'planning',
+            'priority' => 'medium',
+            'due_date' => 'not-a-date',
+        ])
+        ->assertSessionHasErrors(['due_date']);
+});
+
+test('due_date と priority が一覧レスポンスに含まれる', function () {
+    $user = User::factory()->create();
+    Epic::factory()->create([
+        'title' => 'テスト案件',
+        'status' => 'planning',
+        'priority' => 'high',
+        'due_date' => '2026-09-01',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('epics.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('epics.0.priority', 'high')
+            ->where('epics.0.due_date', '2026-09-01')
+        );
 });
 
 test('エピックが削除できる', function () {

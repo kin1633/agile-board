@@ -6,6 +6,7 @@ use App\Models\Issue;
 use App\Models\Label;
 use App\Models\Milestone;
 use App\Models\Repository;
+use App\Models\Setting;
 use App\Models\Sprint;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Factory as Http;
@@ -74,16 +75,21 @@ class GitHubSyncService
     /**
      * 指定リポジトリのマイルストーン・Issue・ラベルを同期する。
      *
-     * github_project_number が設定されている場合は Iteration も同期する。
+     * github_project_number が設定されている場合は GitHub Milestones API をスキップし、
+     * Monthly Iteration からマイルストーンを同期する。
      */
     private function syncRepository(Repository $repository, string $githubToken): void
     {
         $client = $this->makeClient($githubToken);
 
-        $this->syncMilestones($repository, $client, $githubToken);
+        // github_project_number がある場合は GitHub Milestones API を使わず
+        // Iteration 同期（syncProjectIterations）でマイルストーン・スプリントを一元管理する
+        if ($repository->github_project_number === null) {
+            $this->syncMilestones($repository, $client, $githubToken);
+        }
+
         $this->syncLabels($repository, $client);
 
-        // Project Number が設定されている場合のみ Iteration ベースのスプリント同期を実行
         if ($repository->github_project_number !== null) {
             $this->syncProjectIterations($repository, $githubToken);
         }
@@ -131,51 +137,103 @@ class GitHubSyncService
     }
 
     /**
-     * ProjectV2 の Iteration をスプリントとして同期し、各 Issue を紐付ける。
+     * ProjectV2 の Iteration をフィールド名に応じて Sprint または Milestone に同期する。
+     *
+     * - sprint_iteration_field（デフォルト: Sprint）→ Sprint モデルとして同期し Issue を紐付ける
+     * - monthly_iteration_field（デフォルト: Monthly）→ Milestone モデルとして同期する
      *
      * 新規スプリント: start_date = Iteration の startDate、end_date = startDate + duration - 1日
      * 既存スプリント: start_date / working_days は保護する
      */
     private function syncProjectIterations(Repository $repository, string $token): void
     {
+        $sprintFieldName = Setting::get('sprint_iteration_field', 'Sprint');
+        $monthlyFieldName = Setting::get('monthly_iteration_field', 'Monthly');
+
         $result = $this->graphql->fetchProjectIterationsWithItems(
             $repository->owner,
-            $repository->name,
             $repository->github_project_number,
             $token
         );
 
-        foreach ($result['iterations'] as $iteration) {
-            $startDate = Carbon::parse($iteration['startDate']);
-            // duration は週単位（GitHub の仕様）
-            $endDate = $startDate->copy()->addWeeks($iteration['duration'])->subDay();
-            $durationDays = $startDate->diffInDays($endDate) + 1;
+        $iterationsByField = $result['iterationsByField'];
+        $issuesByIteration = $result['issuesByIteration'];
 
-            $existingSprint = Sprint::where('github_iteration_id', $iteration['id'])->first();
-
-            if ($existingSprint) {
-                // 既存スプリント: start_date / working_days は保護する
-                $existingSprint->update([
-                    'title' => $iteration['title'],
-                    'end_date' => $endDate->toDateString(),
-                    'iteration_duration_days' => $durationDays,
-                ]);
-                $sprint = $existingSprint;
-            } else {
-                $sprint = Sprint::create([
-                    'github_iteration_id' => $iteration['id'],
-                    'title' => $iteration['title'],
-                    'start_date' => $startDate->toDateString(),
-                    'end_date' => $endDate->toDateString(),
-                    'working_days' => 5,
-                    'iteration_duration_days' => $durationDays,
-                    'state' => 'open',
-                ]);
-            }
-
-            $issues = $result['issuesByIteration'][$iteration['id']] ?? [];
+        // Sprint フィールド: Issue と紐付けてスプリントを同期
+        foreach ($iterationsByField[$sprintFieldName] ?? [] as $iteration) {
+            $sprint = $this->upsertSprintForIteration($iteration);
+            $issues = $issuesByIteration[$iteration['id']] ?? [];
             $this->syncIssuesForIteration($repository, $sprint, $issues, $token);
         }
+
+        // Monthly フィールド: マイルストーンとして同期
+        foreach ($iterationsByField[$monthlyFieldName] ?? [] as $iteration) {
+            $this->upsertMilestoneForIteration($repository, $iteration);
+        }
+    }
+
+    /**
+     * Iteration からスプリントを作成・更新して返す。
+     *
+     * 新規: start_date = Iteration の startDate
+     * 既存: start_date / working_days は保護する
+     *
+     * @param  array{id: string, title: string, startDate: string, duration: int}  $iteration
+     */
+    private function upsertSprintForIteration(array $iteration): Sprint
+    {
+        $startDate = Carbon::parse($iteration['startDate']);
+        // duration は週単位（GitHub の仕様）
+        $endDate = $startDate->copy()->addWeeks($iteration['duration'])->subDay();
+        $durationDays = $startDate->diffInDays($endDate) + 1;
+
+        $existingSprint = Sprint::where('github_iteration_id', $iteration['id'])->first();
+
+        if ($existingSprint) {
+            // 既存スプリント: start_date / working_days は保護する
+            $existingSprint->update([
+                'title' => $iteration['title'],
+                'end_date' => $endDate->toDateString(),
+                'iteration_duration_days' => $durationDays,
+            ]);
+
+            return $existingSprint;
+        }
+
+        return Sprint::create([
+            'github_iteration_id' => $iteration['id'],
+            'title' => $iteration['title'],
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
+            'working_days' => 5,
+            'iteration_duration_days' => $durationDays,
+            'state' => 'open',
+        ]);
+    }
+
+    /**
+     * Monthly Iteration からマイルストーンを作成・更新する。
+     *
+     * GitHub Projects の Iteration を月次目標（Milestone）として管理する。
+     * due_on は Iteration の終了日（startDate + duration - 1日）を使用する。
+     *
+     * @param  array{id: string, title: string, startDate: string, duration: int}  $iteration
+     */
+    private function upsertMilestoneForIteration(Repository $repository, array $iteration): void
+    {
+        $startDate = Carbon::parse($iteration['startDate']);
+        $endDate = $startDate->copy()->addWeeks($iteration['duration'])->subDay();
+
+        Milestone::updateOrCreate(
+            ['github_iteration_id' => $iteration['id']],
+            [
+                'repository_id' => $repository->id,
+                'title' => $iteration['title'],
+                'due_on' => $endDate->toDateString(),
+                'state' => 'open',
+                'synced_at' => now(),
+            ]
+        );
     }
 
     /**
