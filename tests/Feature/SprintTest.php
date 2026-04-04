@@ -12,7 +12,7 @@ test('未認証ユーザーはスプリント一覧にアクセスできない',
 
 test('未認証ユーザーはスプリント詳細にアクセスできない', function () {
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create();
 
     $this->get(route('sprints.show', $sprint))->assertRedirect(route('login'));
@@ -21,8 +21,8 @@ test('未認証ユーザーはスプリント詳細にアクセスできない',
 test('スプリント一覧が表示される', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone1 = Milestone::factory()->for($repo)->create();
-    $milestone2 = Milestone::factory()->for($repo)->create();
+    $milestone1 = Milestone::factory()->create();
+    $milestone2 = Milestone::factory()->create();
     Sprint::factory()->for($milestone1)->create(['title' => 'Sprint 1', 'state' => 'open']);
     Sprint::factory()->for($milestone2)->create(['title' => 'Sprint 2', 'state' => 'closed']);
 
@@ -38,7 +38,7 @@ test('スプリント一覧が表示される', function () {
 test('スプリント詳細にIssue一覧が含まれる', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create(['state' => 'open']);
 
     Issue::factory()->for($repo)->create([
@@ -63,7 +63,7 @@ test('スプリント詳細にIssue一覧が含まれる', function () {
 test('スプリントのベロシティが計算される', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create(['state' => 'open']);
 
     Issue::factory()->for($repo)->create([
@@ -90,7 +90,7 @@ test('スプリントのベロシティが計算される', function () {
 test('担当者別ワークロードが集計される', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create(['state' => 'open']);
 
     Issue::factory()->for($repo)->create([

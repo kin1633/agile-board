@@ -16,21 +16,11 @@ POST /sync (SyncController)
   └─ GitHubSyncService::syncAll(githubToken)
       └─ Repository::where('active', true) の全リポジトリに対して繰り返す
           │
-          ├─ [Milestone モードのみ] syncMilestones()
-          │   └─ GitHub REST API: GET /repos/{owner}/{repo}/milestones?state=all
-          │       ├─ Milestone を upsert（github_milestone_id で識別）
-          │       │
-          │       └─ syncSprintForMilestone()
-          │           ├─ Sprint を upsert（既存レコードの start_date/working_days は保護）
-          │           └─ syncIssuesForMilestone()
-          │               └─ GitHub REST API: GET /repos/{owner}/{repo}/issues?milestone={number}
-          │                   └─ Issue を upsert（story_points/exclude_velocity は保護）
-          │
           ├─ [Iteration モードのみ] syncProjectIterations()
           │   └─ GitHubGraphQLClient::fetchProjectIterationsWithItems()
           │       └─ GitHub GraphQL API: POST https://api.github.com/graphql
           │           ├─ projectV2.fields から IterationField をフィールド名別に取得
-          │           │   → ['Sprint' => [...], 'Monthly' => [...]] 形式で返す
+          │           │   → ['Sprint' => [...]] 形式で返す
           │           │   → 各フィールド: iterations（進行中） + completedIterations（完了済み）
           │           └─ projectV2.items をカーソルページネーションで全件取得
           │               → 各 Item の fieldValues から iterationId を抽出し Issue をグループ化
@@ -38,7 +28,8 @@ POST /sync (SyncController)
           │   [Sprint フィールド] 各 Iteration を Sprint として upsert
           │       ├─ github_iteration_id で識別
           │       ├─ 新規: start_date = Iteration の startDate、working_days = 5（デフォルト）
-          │       └─ 既存: start_date / working_days は保護（上書きしない）
+          │       ├─ 既存: start_date / working_days は保護（上書きしない）
+          │       └─ milestone_id = NULL（GitHub 同期では設定しない）
           │
           │   [Sprint フィールド] 各 Iteration に属する Issue を syncIssuesForIteration() で upsert
           │       ├─ story_points / exclude_velocity / estimated_hours / actual_hours は保護
@@ -51,10 +42,6 @@ POST /sync (SyncController)
           │               ├─ 各サブイシューを parent_issue_id 付きで upsert
           │               ├─ estimated_hours / actual_hours は保護（ユーザー入力値を守る）
           │               └─ 新規サブイシューは exclude_velocity = true（デフォルト）
-          │
-          │   [Monthly フィールド] 各 Iteration を Milestone として upsert
-          │       ├─ github_iteration_id で識別（github_milestone_id は使用しない）
-          │       └─ due_on = startDate + duration週 - 1日 で自動計算
           │
           ├─ syncLabels()
           │   └─ GitHub REST API: GET /repos/{owner}/{repo}/labels
@@ -70,16 +57,18 @@ POST /sync (SyncController)
                  → Epic.started_at = today() をセット（既設定は上書きしない）
 ```
 
+> **マイルストーン同期の削除**: GitHub Iteration → Milestone の同期ロジックは完全に削除されました。マイルストーンはアプリ独自管理です。
+
 ### モード判定
 
 | 条件 | 動作 |
 |------|------|
-| `repositories.github_project_number` が NULL | **Milestone モード**: REST マイルストーン → Sprint（後方互換） |
-| `repositories.github_project_number` が設定済み | **Iteration モード**: `Sprint` フィールド → Sprint、`Monthly` フィールド → Milestone |
+| `repositories.github_project_number` が NULL | **同期なし**: スプリント・Issue は手動で管理 |
+| `repositories.github_project_number` が設定済み | **Iteration モード**: GitHub Projects の `Sprint` フィールド → Sprint を同期 |
 
-Iteration モードでは REST Milestones API を**完全にスキップ**し、GitHub Projects の Iteration から Sprint と Milestone を一元管理します。
+Iteration モードでは GitHub Projects の Iteration フィールドから**スプリント** のみを同期します。マイルストーンは Iteration モード関係なく、常にアプリ独自管理です。
 
-フィールド名（`Sprint` / `Monthly`）は `settings` テーブルの `sprint_iteration_field` / `monthly_iteration_field` で変更できます（デフォルト値は SettingSeeder で投入）。
+フィールド名（`Sprint`）は `settings` テーブルの `sprint_iteration_field` で変更できます（デフォルト値は SettingSeeder で投入）。
 
 ---
 
@@ -91,6 +80,7 @@ Iteration モードでは REST Milestones API を**完全にスキップ**し、
 |---|---|---|
 | sprints | start_date | アプリ側で手動設定する開始日 |
 | sprints | working_days | 稼働日数は GitHub に存在しない |
+| sprints | milestone_id | マイルストーン紐付けはアプリ側で手動管理 |
 | issues | story_points | GitHub Issue にストーリーポイントの概念がない |
 | issues | exclude_velocity | ベロシティ除外設定は GitHub に存在しない |
 | issues | estimated_hours | ユーザーがアプリ側で入力する予定工数 |

@@ -124,7 +124,7 @@ test('工数に 9999.99 を超える値は拒否される', function () {
 test('スプリント詳細ページに epics が渡される', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create();
     Epic::factory()->count(3)->create();
 

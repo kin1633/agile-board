@@ -240,6 +240,7 @@ class GitHubGraphQLClient
                 }
             }
         }
+        }
         GRAPHQL;
 
         // 既知 Iteration ID の集合（素早い存在確認のため）

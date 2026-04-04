@@ -41,6 +41,7 @@ app/
       Settings/       # 設定系コントローラー
       DashboardController.php
       EpicController.php
+      MilestoneController.php
       RetrospectiveController.php
       SprintController.php
       SyncController.php
@@ -51,6 +52,7 @@ app/
 resources/js/
   pages/              # React ページコンポーネント（Inertia のルート）
     dashboard.tsx
+    milestones/
     sprints/
     epics/
     retrospectives/
