@@ -74,7 +74,7 @@ members
 | started_at | date\|null | 着手日（手動設定） |
 | due_date | date\|null | 期限日（手動設定） |
 
-> マイルストーン作成・編集・削除はマイルストーン画面（`/milestones`）から手動で管理します。GitHub Iteration との同期は行いません。
+> `/milestones` アクセス時に `MilestoneGeneratorService` が現在月 −6〜+12ヶ月（計19ヶ月）を `firstOrCreate` で自動補完します。手動作成・削除はできません。タイトル・ゴール・ステータス・日付の編集のみ可能です。GitHub Iteration との同期は行いません。
 
 ### sprints
 
@@ -145,7 +145,7 @@ Epic（案件）
 
 ### 管理方式
 
-- **マイルストーン**: `/milestones` 画面で手動作成・編集・削除
+- **マイルストーン**: `/milestones` アクセス時に自動生成（手動作成・削除不可）。タイトル等の編集は `/milestones/{id}/edit` から可能
 - **スプリント**: GitHub 同期（Iteration モード）またはアプリ手動作成
 - **紐付け**: スプリント → マイルストーン の紐付けは `PATCH /sprints/{sprint}/milestone` で手動設定
 
