@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import milestoneRoutes from '@/routes/milestones';
@@ -18,7 +19,8 @@ interface MilestoneRow {
 }
 
 interface Props {
-    milestones: MilestoneRow[];
+    upcoming: MilestoneRow[];
+    past: MilestoneRow[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -33,21 +35,55 @@ const STATUS_CLASSES: Record<string, string> = {
     done: 'bg-green-100 text-green-700',
 };
 
-/** 年ごとにグループ化する */
-function groupByYear(milestones: MilestoneRow[]): Map<number, MilestoneRow[]> {
-    const map = new Map<number, MilestoneRow[]>();
-    for (const m of milestones) {
-        if (!map.has(m.year)) {
-            map.set(m.year, []);
-        }
-        map.get(m.year)!.push(m);
+/** マイルストーン一覧テーブル */
+function MilestoneList({ milestones }: { milestones: MilestoneRow[] }) {
+    if (milestones.length === 0) {
+        return (
+            <p className="text-sm text-muted-foreground">
+                マイルストーンがありません。
+            </p>
+        );
     }
-    return map;
+
+    return (
+        <div className="rounded-xl border border-sidebar-border/70 bg-card">
+            <ul className="divide-y divide-sidebar-border/50">
+                {milestones.map((milestone) => (
+                    <li key={milestone.id}>
+                        <Link
+                            href={milestoneRoutes.show({ milestone: milestone.id }).url}
+                            className="flex items-center justify-between px-6 py-4 transition-colors hover:bg-muted/30"
+                        >
+                            <div>
+                                <p className="font-medium">{milestone.title}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                    {milestone.sprint_count > 0
+                                        ? `スプリント ${milestone.sprint_count}件`
+                                        : 'スプリント未割当'}
+                                    {milestone.due_date && (
+                                        <span className="ml-2">
+                                            期限: {milestone.due_date}
+                                        </span>
+                                    )}
+                                </p>
+                            </div>
+                            <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[milestone.status] ?? ''}`}
+                            >
+                                {STATUS_LABELS[milestone.status] ?? milestone.status}
+                            </span>
+                        </Link>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
 }
 
-export default function MilestonesIndex({ milestones }: Props) {
-    const groups = groupByYear(milestones);
-    const years = Array.from(groups.keys()).sort((a, b) => b - a);
+type Tab = 'upcoming' | 'past';
+
+export default function MilestonesIndex({ upcoming, past }: Props) {
+    const [activeTab, setActiveTab] = useState<Tab>('upcoming');
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -56,60 +92,34 @@ export default function MilestonesIndex({ milestones }: Props) {
                 {/* ヘッダー */}
                 <div className="flex items-center justify-between">
                     <h1 className="text-xl font-semibold">マイルストーン一覧</h1>
-                    <Link
-                        href={milestoneRoutes.create().url}
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                    >
-                        + 新規作成
-                    </Link>
                 </div>
 
-                {milestones.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                        マイルストーンがありません。新規作成してください。
-                    </p>
-                ) : (
-                    years.map((year) => (
-                        <section key={year}>
-                            <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-                                {year}年
-                            </h2>
-                            <div className="rounded-xl border border-sidebar-border/70 bg-card">
-                                <ul className="divide-y divide-sidebar-border/50">
-                                    {groups.get(year)!.map((milestone) => (
-                                        <li key={milestone.id}>
-                                            <Link
-                                                href={milestoneRoutes.show({ milestone: milestone.id }).url}
-                                                className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
-                                            >
-                                                <div>
-                                                    <p className="font-medium">
-                                                        {milestone.title}
-                                                    </p>
-                                                    <p className="mt-0.5 text-xs text-muted-foreground">
-                                                        {milestone.sprint_count > 0
-                                                            ? `スプリント ${milestone.sprint_count}件`
-                                                            : 'スプリント未割当'}
-                                                        {milestone.due_date && (
-                                                            <span className="ml-2">
-                                                                期限: {milestone.due_date}
-                                                            </span>
-                                                        )}
-                                                    </p>
-                                                </div>
-                                                <span
-                                                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[milestone.status] ?? ''}`}
-                                                >
-                                                    {STATUS_LABELS[milestone.status] ?? milestone.status}
-                                                </span>
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </section>
-                    ))
-                )}
+                {/* タブ */}
+                <div className="flex gap-1 border-b border-sidebar-border/70">
+                    <button
+                        onClick={() => setActiveTab('upcoming')}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                            activeTab === 'upcoming'
+                                ? 'border-b-2 border-primary text-primary'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        今月・今後
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('past')}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                            activeTab === 'past'
+                                ? 'border-b-2 border-primary text-primary'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        過去
+                    </button>
+                </div>
+
+                {/* タブコンテンツ */}
+                <MilestoneList milestones={activeTab === 'upcoming' ? upcoming : past} />
             </div>
         </AppLayout>
     );
