@@ -4,7 +4,7 @@
 
 | 分類 | 技術 |
 |---|---|
-| バックエンド | PHP 8.4 / Laravel 13 |
+| バックエンド | PHP 8.3+ / Laravel 13 |
 | フロントエンド | React 19 / TypeScript |
 | サーバーサイドレンダリング連携 | Inertia.js v2 |
 | スタイリング | Tailwind CSS v4 |
@@ -47,7 +47,8 @@ app/
       SyncController.php
   Models/             # Eloquent モデル
   Services/
-    GitHubSyncService.php  # GitHub API 同期ロジック
+    GitHubSyncService.php        # GitHub API 同期ロジック
+    MilestoneGeneratorService.php  # マイルストーン自動生成（現在月 ±12ヶ月 を冪等補完）
 
 resources/js/
   pages/              # React ページコンポーネント（Inertia のルート）

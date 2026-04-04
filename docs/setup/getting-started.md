@@ -2,7 +2,7 @@
 
 ## 必要なもの
 
-- PHP 8.4 以上
+- PHP 8.3 以上
 - Composer
 - Node.js 22 以上
 - npm

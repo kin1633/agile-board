@@ -68,7 +68,7 @@ POST /sync (SyncController)
 
 Iteration モードでは GitHub Projects の Iteration フィールドから**スプリント** のみを同期します。マイルストーンは Iteration モード関係なく、常にアプリ独自管理です。
 
-フィールド名（`Sprint`）は `settings` テーブルの `sprint_iteration_field` で変更できます（デフォルト値は SettingSeeder で投入）。
+フィールド名（`Sprint`）は `settings` テーブルの `sprint_iteration_field` キーで管理されます（デフォルト値は SettingSeeder で投入）。設定変更は DB または tinker で直接行う必要があります（設定 UI は未実装）。
 
 ---
 
@@ -108,7 +108,7 @@ resolveRepository(fallback, repo_owner, repo_name):
 
 ## ページネーション対応
 
-**REST API（Milestone・Issue・Label）:** `fetchAllPages()` メソッドで `Link` ヘッダーを解析し、全ページを自動取得します（100件/ページ）。
+**REST API（Issue・Label）:** `fetchAllPages()` メソッドで `Link` ヘッダーを解析し、全ページを自動取得します（100件/ページ）。
 
 **GraphQL API（Project Items）:** カーソルベースのページネーション（`after: $cursor`）で 100件ずつ全件取得します。
 
@@ -126,9 +126,9 @@ GraphQL API 特有のエラー:
 
 ## 同期タイミング
 
-現在は手動同期のみです。定期自動同期が必要な場合は、`app/Console/Kernel.php` にスケジュールを追加することで対応できます。
+現在は手動同期のみです。定期自動同期が必要な場合は、`routes/console.php` にスケジュールを追加することで対応できます（Laravel 11+ 方式）。
 
 ```php
 // 例: 毎時同期
-$schedule->call(fn () => app(GitHubSyncService::class)->syncAll(...))->hourly();
+Schedule::call(fn () => app(GitHubSyncService::class)->syncAll(...))->hourly();
 ```
