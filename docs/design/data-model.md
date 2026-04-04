@@ -10,12 +10,11 @@ repositories
   id, owner, name, full_name, active, github_project_number, synced_at
 
 milestones
-  id, repository_id → repositories
-  github_milestone_id (nullable), github_iteration_id (nullable, unique)
-  title, due_on, state, synced_at
+  id, year, month, title, goal, status, started_at, due_date
+  ユニーク制約: (year, month)
 
 sprints
-  id, milestone_id → milestones (nullable)
+  id, milestone_id → milestones (nullable, SET NULL on delete)
   github_iteration_id (nullable, unique)
   title, start_date*, working_days*, end_date, iteration_duration_days, state
 
@@ -63,30 +62,34 @@ members
 
 ### milestones
 
+マイルストーンはアプリ独自管理に完全移行しました。GitHub との同期は行いません。
+
 | カラム | 型 | 説明 |
 |---|---|---|
-| github_milestone_id | int\|null | Milestone モード時の GitHub マイルストーン ID。Iteration モードでは NULL |
-| github_iteration_id | string\|null | Iteration モード時の GitHub Iteration ID（Monthly フィールド）。一意 |
+| year | int | マイルストーンの年（2020～2099） |
+| month | int | マイルストーンの月（1～12）。year + month で一意 |
 | title | string | マイルストーン名 |
-| due_on | date\|null | 期限日。Iteration モードでは `startDate + duration週 - 1日` で自動計算 |
-| state | string | `open` / `closed` |
+| goal | text\|null | マイルストーンの目標・説明 |
+| status | string | `planning` / `in_progress` / `done` |
+| started_at | date\|null | 着手日（手動設定） |
+| due_date | date\|null | 期限日（手動設定） |
 
-> `github_milestone_id` と `github_iteration_id` はどちらか一方のみ持ちます。
+> マイルストーン作成・編集・削除はマイルストーン画面（`/milestones`）から手動で管理します。GitHub Iteration との同期は行いません。
 
 ### sprints
 
 | カラム | 型 | 説明 |
 |---|---|---|
-| milestone_id | FK\|null | Milestone モード時の紐付け。Iteration モードでは NULL |
-| github_iteration_id | string\|null | Iteration モード時の GitHub Iteration ID（一意） |
+| milestone_id | FK\|null | 紐付けマイルストーン。手動で設定・解除可能。スプリント削除時は SET NULL |
+| github_iteration_id | string\|null | Iteration モード時の GitHub Iteration ID（一意）。GitHub 同期で設定される |
 | title | string | スプリント名 |
 | start_date | date | **手動設定**。スプリント開始日（バーンダウン計算に使用） |
-| end_date | date | スプリント終了日（同期で更新） |
+| end_date | date | スプリント終了日。GitHub 同期で更新（Iteration モード）または手動設定 |
 | working_days | int | **手動設定**。稼働日数（ベロシティ計算の分母） |
-| iteration_duration_days | int\|null | Iteration の期間（日数）。GitHub の duration（週）から換算 |
+| iteration_duration_days | int\|null | Iteration の期間（日数）。GitHub の duration（週）から換算（Iteration モード） |
 | state | string | `open` / `closed` |
 
-> `milestone_id` と `github_iteration_id` はどちらか一方のみ持ちます。両方 NULL になることはありません。
+> Iteration モードでは `github_iteration_id` が設定されて GitHub と同期されます。`milestone_id` はマイルストーン画面から手動で紐付けられます。
 
 ### issues
 
@@ -136,22 +139,23 @@ Epic（案件）
 
 ---
 
-## スプリントの2つのモード
+## マイルストーンとスプリントの関係
 
-### Milestone モード（`github_project_number` 未設定）
+マイルストーンはアプリ独自管理に完全移行し、GitHub 同期から切り離されました。
 
-```
-repositories ─→ milestones ─→ sprints ─→ issues
-```
+### 管理方式
+
+- **マイルストーン**: `/milestones` 画面で手動作成・編集・削除
+- **スプリント**: GitHub 同期（Iteration モード）またはアプリ手動作成
+- **紐付け**: スプリント → マイルストーン の紐付けは `PATCH /sprints/{sprint}/milestone` で手動設定
 
 ### Iteration モード（`github_project_number` 設定済み）
 
 ```
-repositories ─→ sprints（Sprint フィールド, github_iteration_id で識別）─→ issues
-              └─→ milestones（Monthly フィールド, github_iteration_id で識別）
+repositories ─→ sprints（GitHub Sprint フィールド）─→ issues
 ```
 
-REST マイルストーン API は使用しません。Sprint / Monthly の2つの Iteration フィールドでそれぞれ管理します。
+マイルストーンはこのモードに関わらず、アプリ独自管理です。スプリント作成時は `milestone_id = NULL` となり、マイルストーン画面から手動で紐付けします。
 
 ---
 

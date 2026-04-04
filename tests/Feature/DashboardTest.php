@@ -42,7 +42,7 @@ test('進行中スプリントがない場合はnullが渡される', function (
 test('メトリクスが正しく計算される', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create([
         'state' => 'open',
         'start_date' => now()->subDays(5)->toDateString(),
@@ -72,7 +72,7 @@ test('メトリクスが正しく計算される', function () {
 test('KPTサマリーが正しく集計される', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create(['state' => 'open']);
 
     Retrospective::factory()->for($sprint)->create(['type' => 'keep']);
@@ -92,7 +92,7 @@ test('KPTサマリーが正しく集計される', function () {
 test('進行中Issueが一覧に含まれる', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();
-    $milestone = Milestone::factory()->for($repo)->create();
+    $milestone = Milestone::factory()->create();
     $sprint = Sprint::factory()->for($milestone)->create(['state' => 'open']);
 
     Issue::factory()->for($repo)->create([
