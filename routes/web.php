@@ -34,8 +34,17 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sprints', [SprintController::class, 'index'])->name('sprints.index');
     Route::get('/sprints/{sprint}', [SprintController::class, 'show'])->name('sprints.show');
 
-    // マイルストーン
+    // マイルストーン（/milestones/create を {milestone} より先に定義して衝突を防ぐ）
+    Route::get('/milestones/create', [MilestoneController::class, 'create'])->name('milestones.create');
     Route::get('/milestones', [MilestoneController::class, 'index'])->name('milestones.index');
+    Route::post('/milestones', [MilestoneController::class, 'store'])->name('milestones.store');
+    Route::get('/milestones/{milestone}', [MilestoneController::class, 'show'])->name('milestones.show');
+    Route::get('/milestones/{milestone}/edit', [MilestoneController::class, 'edit'])->name('milestones.edit');
+    Route::put('/milestones/{milestone}', [MilestoneController::class, 'update'])->name('milestones.update');
+    Route::delete('/milestones/{milestone}', [MilestoneController::class, 'destroy'])->name('milestones.destroy');
+
+    // スプリントへのマイルストーン紐付け
+    Route::patch('/sprints/{sprint}/milestone', [SprintController::class, 'assignMilestone'])->name('sprints.milestone');
 
     // エピック
     // /epics/{epic} より前に定義しないとルートが衝突するため先頭に配置

@@ -6,6 +6,8 @@ use App\Models\Epic;
 use App\Models\Sprint;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -13,7 +15,7 @@ class SprintController extends Controller
 {
     public function index(): Response
     {
-        $sprints = Sprint::with('milestone.repository')
+        $sprints = Sprint::with('milestone')
             ->orderByDesc('end_date')
             ->get()
             ->map(fn (Sprint $sprint) => [
@@ -32,7 +34,7 @@ class SprintController extends Controller
     public function show(Sprint $sprint): Response
     {
         // subIssues（タスク）も eager load し、工数表示に使用する
-        $sprint->load(['issues.labels', 'issues.epic', 'issues.subIssues', 'milestone.repository']);
+        $sprint->load(['issues.labels', 'issues.epic', 'issues.subIssues', 'milestone']);
 
         $issues = $sprint->issues->map(fn ($issue) => [
             'id' => $issue->id,
@@ -115,6 +117,23 @@ class SprintController extends Controller
 
             return compact('date', 'ideal', 'actual');
         })->all();
+    }
+
+    /**
+     * スプリントにマイルストーンを紐付ける（または解除する）。
+     *
+     * マイルストーン詳細画面のスプリント紐付けモーダルから呼ばれる。
+     * milestone_id に null を渡すと紐付けを解除できる。
+     */
+    public function assignMilestone(Request $request, Sprint $sprint): RedirectResponse
+    {
+        $validated = $request->validate([
+            'milestone_id' => ['nullable', 'integer', 'exists:milestones,id'],
+        ]);
+
+        $sprint->update(['milestone_id' => $validated['milestone_id']]);
+
+        return back();
     }
 
     /**

@@ -5,10 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['repository_id', 'github_milestone_id', 'github_iteration_id', 'title', 'due_on', 'state', 'synced_at'])]
+#[Fillable(['year', 'month', 'title', 'goal', 'status', 'started_at', 'due_date'])]
 class Milestone extends Model
 {
     use HasFactory;
@@ -16,18 +15,19 @@ class Milestone extends Model
     protected function casts(): array
     {
         return [
-            'due_on' => 'date',
-            'synced_at' => 'datetime',
+            'year' => 'integer',
+            'month' => 'integer',
+            'started_at' => 'date',
+            'due_date' => 'date',
         ];
     }
 
-    public function repository(): BelongsTo
+    /**
+     * 配下のスプリント一覧。
+     * 1つのマイルストーンに複数スプリントを紐付けられる。
+     */
+    public function sprints(): HasMany
     {
-        return $this->belongsTo(Repository::class);
-    }
-
-    public function sprint(): HasOne
-    {
-        return $this->hasOne(Sprint::class);
+        return $this->hasMany(Sprint::class);
     }
 }

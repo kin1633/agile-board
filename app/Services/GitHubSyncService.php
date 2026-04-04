@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Epic;
 use App\Models\Issue;
 use App\Models\Label;
-use App\Models\Milestone;
 use App\Models\Repository;
 use App\Models\Setting;
 use App\Models\Sprint;
@@ -24,8 +23,8 @@ use Illuminate\Http\Client\PendingRequest;
  * - sprints.start_date（既存レコードのみ）
  * - sprints.working_days（既存レコードのみ）
  *
- * github_project_number が設定されている場合は ProjectV2 の Iteration をスプリントとして同期する。
- * 未設定の場合は従来通りマイルストーンをスプリントとして同期する（後方互換性維持）。
+ * github_project_number が設定されている場合のみ ProjectV2 の Iteration をスプリントとして同期する。
+ * マイルストーンは GitHub と一切同期せず、アプリ独自管理とする。
  */
 class GitHubSyncService
 {
@@ -79,20 +78,14 @@ class GitHubSyncService
     }
 
     /**
-     * 指定リポジトリのマイルストーン・Issue・ラベルを同期する。
+     * 指定リポジトリのラベル・スプリント・Issue を同期する。
      *
-     * github_project_number が設定されている場合は GitHub Milestones API をスキップし、
-     * Monthly Iteration からマイルストーンを同期する。
+     * github_project_number が設定されている場合のみ Iteration 同期を実行する。
+     * マイルストーンは GitHub から同期しない（アプリ独自管理）。
      */
     private function syncRepository(Repository $repository, string $githubToken): void
     {
         $client = $this->makeClient($githubToken);
-
-        // github_project_number がある場合は GitHub Milestones API を使わず
-        // Iteration 同期（syncProjectIterations）でマイルストーン・スプリントを一元管理する
-        if ($repository->github_project_number === null) {
-            $this->syncMilestones($repository, $client, $githubToken);
-        }
 
         $this->syncLabels($repository, $client);
 
@@ -104,49 +97,7 @@ class GitHubSyncService
     }
 
     /**
-     * マイルストーンを同期する。
-     *
-     * github_project_number が設定されている場合はマイルストーンデータのみ保存し、
-     * スプリントと Issue の紐付けは Iteration 同期（syncProjectIterations）に委ねる。
-     * 未設定の場合は従来通りマイルストーンをスプリントとして扱う。
-     */
-    private function syncMilestones(Repository $repository, PendingRequest $client, string $token): void
-    {
-        $milestones = $this->fetchAllPages(
-            $client,
-            "repos/{$repository->owner}/{$repository->name}/milestones",
-            ['state' => 'all']
-        );
-
-        foreach ($milestones as $data) {
-            $milestone = Milestone::updateOrCreate(
-                [
-                    'repository_id' => $repository->id,
-                    'github_milestone_id' => $data['number'],
-                ],
-                [
-                    'title' => $data['title'],
-                    'due_on' => $data['due_on'] ? Carbon::parse($data['due_on'])->toDateString() : null,
-                    'state' => $data['state'],
-                    'synced_at' => now(),
-                ]
-            );
-
-            // Iteration モードでは Sprint/Issue の紐付けはスキップ
-            if ($repository->github_project_number !== null) {
-                continue;
-            }
-
-            $this->syncSprintForMilestone($milestone, $data);
-            $this->syncIssuesForMilestone($repository, $milestone, $data['number'], $client, $token);
-        }
-    }
-
-    /**
-     * ProjectV2 の Iteration をフィールド名に応じて Sprint または Milestone に同期する。
-     *
-     * - sprint_iteration_field（デフォルト: Sprint）→ Sprint モデルとして同期し Issue を紐付ける
-     * - monthly_iteration_field（デフォルト: Monthly）→ Milestone モデルとして同期する
+     * ProjectV2 の Sprint フィールドの Iteration をスプリントとして同期する。
      *
      * 新規スプリント: start_date = Iteration の startDate、end_date = startDate + duration - 1日
      * 既存スプリント: start_date / working_days は保護する
@@ -154,7 +105,6 @@ class GitHubSyncService
     private function syncProjectIterations(Repository $repository, string $token): void
     {
         $sprintFieldName = Setting::get('sprint_iteration_field', 'Sprint');
-        $monthlyFieldName = Setting::get('monthly_iteration_field', 'Monthly');
 
         $result = $this->graphql->fetchProjectIterationsWithItems(
             $repository->owner,
@@ -170,11 +120,6 @@ class GitHubSyncService
             $sprint = $this->upsertSprintForIteration($iteration);
             $issues = $issuesByIteration[$iteration['id']] ?? [];
             $this->syncIssuesForIteration($repository, $sprint, $issues, $token);
-        }
-
-        // Monthly フィールド: マイルストーンとして同期
-        foreach ($iterationsByField[$monthlyFieldName] ?? [] as $iteration) {
-            $this->upsertMilestoneForIteration($repository, $iteration);
         }
     }
 
@@ -215,31 +160,6 @@ class GitHubSyncService
             'iteration_duration_days' => $durationDays,
             'state' => 'open',
         ]);
-    }
-
-    /**
-     * Monthly Iteration からマイルストーンを作成・更新する。
-     *
-     * GitHub Projects の Iteration を月次目標（Milestone）として管理する。
-     * due_on は Iteration の終了日（startDate + duration - 1日）を使用する。
-     *
-     * @param  array{id: string, title: string, startDate: string, duration: int}  $iteration
-     */
-    private function upsertMilestoneForIteration(Repository $repository, array $iteration): void
-    {
-        $startDate = Carbon::parse($iteration['startDate']);
-        $endDate = $startDate->copy()->addDays($iteration['duration'])->subDay();
-
-        Milestone::updateOrCreate(
-            ['github_iteration_id' => $iteration['id']],
-            [
-                'repository_id' => $repository->id,
-                'title' => $iteration['title'],
-                'due_on' => $endDate->toDateString(),
-                'state' => 'open',
-                'synced_at' => now(),
-            ]
-        );
     }
 
     /**
@@ -290,100 +210,6 @@ class GitHubSyncService
 
             // サブイシューを同期する
             $this->syncSubIssues($issueModel, $targetRepository, $token);
-        }
-    }
-
-    /**
-     * マイルストーンに対応するスプリントを作成・更新する。
-     *
-     * 新規作成時: start_date = due_on の8日前
-     * 既存レコード: start_date / working_days は上書きしない
-     */
-    private function syncSprintForMilestone(Milestone $milestone, array $milestoneData): void
-    {
-        $existingSprint = Sprint::where('milestone_id', $milestone->id)->first();
-
-        $dueOn = $milestone->due_on;
-
-        if ($existingSprint) {
-            // 既存スプリント: start_date / working_days は保護する
-            $existingSprint->update([
-                'title' => $milestone->title,
-                'end_date' => $dueOn,
-                'state' => $milestoneData['state'],
-            ]);
-        } else {
-            // 新規スプリント: start_date を due_on の8日前で自動計算
-            Sprint::create([
-                'milestone_id' => $milestone->id,
-                'title' => $milestone->title,
-                'start_date' => $dueOn ? $dueOn->copy()->subDays(8)->toDateString() : null,
-                'end_date' => $dueOn,
-                'working_days' => 5,
-                'state' => $milestoneData['state'],
-            ]);
-        }
-    }
-
-    /**
-     * マイルストーンに紐づく Issue を同期する。
-     */
-    private function syncIssuesForMilestone(
-        Repository $repository,
-        Milestone $milestone,
-        int $milestoneNumber,
-        PendingRequest $client,
-        string $token
-    ): void {
-        $sprint = Sprint::where('milestone_id', $milestone->id)->first();
-
-        $issues = $this->fetchAllPages(
-            $client,
-            "repos/{$repository->owner}/{$repository->name}/issues",
-            [
-                'state' => 'all',
-                'milestone' => $milestoneNumber,
-                'per_page' => 100,
-            ]
-        );
-
-        foreach ($issues as $data) {
-            // PR は除外（GitHub API では PR も Issues に含まれる）
-            if (isset($data['pull_request'])) {
-                continue;
-            }
-
-            $existingIssue = Issue::where('repository_id', $repository->id)
-                ->where('github_issue_number', $data['number'])
-                ->first();
-
-            $syncData = [
-                'title' => $data['title'],
-                'state' => $data['state'],
-                // クローズ日時はバーンダウンチャートの実績線に使用
-                'closed_at' => isset($data['closed_at']) ? Carbon::parse($data['closed_at']) : null,
-                'assignee_login' => $data['assignee']['login'] ?? null,
-                'sprint_id' => $sprint?->id,
-                'synced_at' => now(),
-            ];
-
-            if ($existingIssue) {
-                // story_points / exclude_velocity / estimated_hours / actual_hours は既存値を保護する
-                $existingIssue->update($syncData);
-                $issueModel = $existingIssue;
-            } else {
-                $issueModel = Issue::create(array_merge($syncData, [
-                    'repository_id' => $repository->id,
-                    'github_issue_number' => $data['number'],
-                ]));
-            }
-
-            // issue_labels を更新
-            $labelIds = $this->resolveLabelIds($data['labels'] ?? []);
-            $issueModel->labels()->sync($labelIds);
-
-            // サブイシューを同期する
-            $this->syncSubIssues($issueModel, $repository, $token);
         }
     }
 
