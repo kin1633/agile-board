@@ -189,8 +189,8 @@ class GitHubSyncService
     private function upsertSprintForIteration(array $iteration): Sprint
     {
         $startDate = Carbon::parse($iteration['startDate']);
-        // duration は週単位（GitHub の仕様）
-        $endDate = $startDate->copy()->addWeeks($iteration['duration'])->subDay();
+        // duration は日数単位（GitHub の仕様）
+        $endDate = $startDate->copy()->addDays($iteration['duration'])->subDay();
         $durationDays = $startDate->diffInDays($endDate) + 1;
 
         $existingSprint = Sprint::where('github_iteration_id', $iteration['id'])->first();
@@ -228,7 +228,7 @@ class GitHubSyncService
     private function upsertMilestoneForIteration(Repository $repository, array $iteration): void
     {
         $startDate = Carbon::parse($iteration['startDate']);
-        $endDate = $startDate->copy()->addWeeks($iteration['duration'])->subDay();
+        $endDate = $startDate->copy()->addDays($iteration['duration'])->subDay();
 
         Milestone::updateOrCreate(
             ['github_iteration_id' => $iteration['id']],

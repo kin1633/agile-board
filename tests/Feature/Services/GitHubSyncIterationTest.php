@@ -231,8 +231,8 @@ test('Monthly Iteration がマイルストーンとして同期される', funct
     expect($milestone)->not->toBeNull();
     expect($milestone->title)->toBe('2026年4月');
     expect($milestone->repository_id)->toBe($repo->id);
-    // due_on は startDate + 4週間 - 1日
-    expect($milestone->due_on->toDateString())->toBe('2026-04-28');
+    // due_on は startDate + 4日 - 1日
+    expect($milestone->due_on->toDateString())->toBe('2026-04-04');
 });
 
 test('既存の Monthly Iteration マイルストーンは github_iteration_id で更新される', function () {
