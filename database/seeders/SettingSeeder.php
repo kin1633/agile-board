@@ -29,5 +29,12 @@ class SettingSeeder extends Seeder
             ['key' => 'epic_github_priority_order'],
             ['value' => json_encode(['p0', 'p1', 'p2'])]
         );
+
+        // リリースバッファ日数: 開発完了後リリースまでの営業日数（デフォルト0）
+        // due_date のこの日数分前を「開発完了目標日」とし、着手目安日を算出する
+        Setting::firstOrCreate(
+            ['key' => 'release_buffer_days'],
+            ['value' => '0']
+        );
     }
 }

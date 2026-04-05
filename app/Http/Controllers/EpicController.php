@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Epic;
+use App\Models\Holiday;
 use App\Models\Member;
 use App\Models\Setting;
 use App\Models\Sprint;
@@ -261,14 +262,27 @@ class EpicController extends Controller
             ->values()
             ->all();
 
-        // 着手日目安: due_date から ceil(予定工数 / チーム日次工数) 営業日遡った日付
+        // 着手日目安: (due_date - リリースバッファ営業日) からさらに工数日数分遡った日付
         // team_daily_hours が 0（メンバー未登録）や予定工数・期日が未設定の場合は null
         $estimatedStartDate = null;
         if ($epic->due_date && $epicEstimated > 0 && $teamDailyHours > 0) {
+            $releaseBuffer = (int) Setting::get('release_buffer_days', '0');
             $daysNeeded = (int) ceil($epicEstimated / $teamDailyHours);
-            $estimatedStartDate = Carbon::parse($epic->due_date)
-                ->subWeekdays($daysNeeded)
-                ->toDateString();
+            // 祝日を Holiday テーブルから取得して営業日計算に使用する
+            $holidays = Holiday::pluck('date')
+                ->map(fn ($d) => Carbon::parse($d)->toDateString())
+                ->all();
+            // まずリリースバッファ分さかのぼり、次に工数日数分さかのぼる
+            $codeCompleteDate = $this->subtractBusinessDays(
+                Carbon::parse($epic->due_date),
+                $releaseBuffer,
+                $holidays
+            );
+            $estimatedStartDate = $this->subtractBusinessDays(
+                $codeCompleteDate,
+                $daysNeeded,
+                $holidays
+            )->toDateString();
         }
 
         return [
@@ -322,5 +336,32 @@ class EpicController extends Controller
             'team_daily_hours' => $teamDailyHours,
             'default_working_days' => 5,
         ];
+    }
+
+    /**
+     * 指定日から祝日・週末を除いた営業日数分さかのぼった日付を返す。
+     *
+     * Carbon::subWeekdays() は土日のみスキップするため、Holiday テーブルの祝日を
+     * 別途考慮する必要がある。祝日に当たる日はスキップして1日ずつ戻りながらカウントする。
+     *
+     * @param  Carbon  $from  起点日
+     * @param  int  $days  遡る営業日数
+     * @param  string[]  $holidays  除外する祝日日付の配列（'Y-m-d' 形式）
+     */
+    private function subtractBusinessDays(Carbon $from, int $days, array $holidays): Carbon
+    {
+        $date = $from->copy();
+        $remaining = $days;
+
+        while ($remaining > 0) {
+            $date->subDay();
+            // 土日または祝日はスキップ
+            if ($date->isWeekend() || in_array($date->toDateString(), $holidays, true)) {
+                continue;
+            }
+            $remaining--;
+        }
+
+        return $date;
     }
 }

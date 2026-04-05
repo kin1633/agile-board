@@ -15,6 +15,7 @@ interface Props {
     workStartTime: string;
     workEndTime: string;
     epicGithubStatusOrder: string[];
+    releaseBufferDays: number;
 }
 
 export default function GeneralSettings({
@@ -22,6 +23,7 @@ export default function GeneralSettings({
     workStartTime,
     workEndTime,
     epicGithubStatusOrder,
+    releaseBufferDays,
 }: Props) {
     const { data, setData, patch, processing, errors, recentlySuccessful } =
         useForm({
@@ -29,6 +31,7 @@ export default function GeneralSettings({
             work_start_time: workStartTime,
             work_end_time: workEndTime,
             epic_github_status_order: epicGithubStatusOrder,
+            release_buffer_days: releaseBufferDays,
         });
 
     /** 優先度リストの指定インデックス要素を上下に移動する（イミュータブルに更新） */
@@ -162,6 +165,44 @@ export default function GeneralSettings({
                                         )}
                                     </div>
                                 </div>
+                            </div>
+
+                            <hr className="border-sidebar-border/50" />
+
+                            <div>
+                                <label className="mb-1 block text-sm font-medium">
+                                    リリースバッファ日数
+                                </label>
+                                <p className="mb-2 text-xs text-muted-foreground">
+                                    開発完了からリリースまでに必要な営業日数です。着手目安日の計算時に
+                                    due_date
+                                    からこの日数分さかのぼった日を「開発完了目標日」とします。
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        value={data.release_buffer_days}
+                                        onChange={(e) =>
+                                            setData(
+                                                'release_buffer_days',
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                        min={0}
+                                        max={30}
+                                        step={1}
+                                        className="w-24 rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                        required
+                                    />
+                                    <span className="text-sm text-muted-foreground">
+                                        営業日
+                                    </span>
+                                </div>
+                                {errors.release_buffer_days && (
+                                    <p className="mt-1 text-xs text-red-500">
+                                        {errors.release_buffer_days}
+                                    </p>
+                                )}
                             </div>
 
                             <hr className="border-sidebar-border/50" />
