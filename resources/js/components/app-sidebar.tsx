@@ -43,24 +43,26 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'スプリント',
-        href: sprints.index(),
-        icon: ClipboardList,
-    },
-    {
-        title: 'マイルストーン',
-        href: milestones.index().url,
-        icon: Flag,
-    },
-    {
         title: 'エピック（案件）',
         href: epics.index(),
         icon: Layers,
+        sectionLabel: '開発',
     },
     {
         title: 'ストーリー・タスク',
         href: issues.index().url,
         icon: ListChecks,
+    },
+    {
+        title: 'マイルストーン',
+        href: milestones.index().url,
+        icon: Flag,
+        sectionLabel: 'スケジュール管理',
+    },
+    {
+        title: 'スプリント',
+        href: sprints.index(),
+        icon: ClipboardList,
     },
     {
         title: 'レトロスペクティブ',
@@ -71,6 +73,7 @@ const mainNavItems: NavItem[] = [
         title: '実績入力',
         href: workLogs.index().url,
         icon: Clock,
+        sectionLabel: '記録',
     },
     {
         title: '勤怠管理',
