@@ -24,9 +24,10 @@ class SettingSeeder extends Seeder
 
         // Epic の github_priority 集計に使う優先度順リスト（先頭ほど優先度が高い）
         // GitHub 同期時に未知の値は末尾に自動追加される
+        // デフォルトは p0 > p1 > p2（GitHub Projects 標準のシングルセレクト値）
         Setting::firstOrCreate(
             ['key' => 'epic_github_priority_order'],
-            ['value' => json_encode(['Critical', 'High', 'Medium', 'Low'])]
+            ['value' => json_encode(['p0', 'p1', 'p2'])]
         );
     }
 }
