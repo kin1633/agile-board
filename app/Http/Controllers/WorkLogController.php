@@ -20,18 +20,21 @@ class WorkLogController extends Controller
      */
     public function index(Request $request): Response
     {
-        $date = $request->query('date', now()->toDateString());
+        // week_start が未指定の場合は今週の月曜日をデフォルトとする
+        $weekStart = $request->query('week_start')
+            ? Carbon::parse($request->query('week_start'))->startOfWeek(Carbon::MONDAY)->toDateString()
+            : Carbon::now()->startOfWeek(Carbon::MONDAY)->toDateString();
+        $weekEnd = Carbon::parse($weekStart)->addDays(6)->toDateString();
         $memberId = $request->query('member_id') !== null ? (int) $request->query('member_id') : null;
 
-        // whereDate() を使うことで MySQL/SQLite の日付フォーマット差異を吸収する
         $query = WorkLog::with(['member', 'epic', 'issue.parent'])
-            ->whereDate('date', $date);
+            ->whereBetween('date', [$weekStart, $weekEnd]);
 
         if ($memberId !== null) {
             $query->where('member_id', $memberId);
         }
 
-        $logs = $query->orderBy('start_time')->get()->map(fn (WorkLog $log) => [
+        $logs = $query->orderBy('date')->orderBy('start_time')->get()->map(fn (WorkLog $log) => [
             'id' => $log->id,
             'date' => $log->date->toDateString(),
             'start_time' => $log->start_time,
@@ -72,7 +75,7 @@ class WorkLogController extends Controller
             'tasks' => $tasks,
             'members' => $members,
             'currentMemberId' => $currentMemberId,
-            'filters' => ['date' => $date, 'member_id' => $memberId],
+            'filters' => ['week_start' => $weekStart, 'member_id' => $memberId],
         ]);
     }
 

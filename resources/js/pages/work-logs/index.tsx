@@ -68,11 +68,20 @@ function kindOf(category: CategoryValue): 'dev' | 'pm' | 'ops' {
     return 'ops';
 }
 
-/** YYYY-MM-DD の日付を1日ずらす */
+/** YYYY-MM-DD の日付を指定日数ずらす */
 function shiftDate(dateStr: string, days: number): string {
     const d = new Date(dateStr + 'T00:00:00');
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
+}
+
+/** week_start から「YYYY年 M/D 〜 M/D」形式の週範囲表示文字列を生成する */
+function weekRangeLabel(weekStart: string): string {
+    const start = new Date(weekStart + 'T00:00:00');
+    const end = new Date(weekStart + 'T00:00:00');
+    end.setDate(end.getDate() + 6);
+    const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+    return `${start.getFullYear()}年 ${fmt(start)} 〜 ${fmt(end)}`;
 }
 
 /** Date オブジェクトから HH:mm 文字列を生成する */
@@ -131,7 +140,7 @@ interface Props {
     tasks: TaskOption[];
     members: MemberOption[];
     currentMemberId: number | null;
-    filters: { date: string; member_id: number | null };
+    filters: { week_start: string; member_id: number | null };
 }
 
 interface FormData {
@@ -172,7 +181,7 @@ export default function WorkLogsIndex({
 
     const { data, setData, post, put, processing, errors, reset } =
         useForm<FormData>({
-            date: filters.date,
+            date: filters.week_start,
             start_time: '',
             end_time: '',
             member_id: currentMemberId?.toString() ?? '',
@@ -186,18 +195,22 @@ export default function WorkLogsIndex({
     const kind = kindOf(data.category);
 
     /** フィルタ変更時にページを再読み込みする */
-    const applyFilter = (date: string, memberId: string) => {
+    const applyFilter = (weekStart: string, memberId: string) => {
         router.get(
             workLogsIndex().url,
-            { date, member_id: memberId || undefined },
+            { week_start: weekStart, member_id: memberId || undefined },
             { preserveScroll: true, replace: true },
         );
     };
 
-    const openCreate = (startTime = '', endTime = '') => {
+    const openCreate = (
+        date = filters.week_start,
+        startTime = '',
+        endTime = '',
+    ) => {
         reset();
         setData({
-            date: filters.date,
+            date,
             start_time: startTime,
             end_time: endTime,
             member_id: currentMemberId?.toString() ?? '',
@@ -227,9 +240,10 @@ export default function WorkLogsIndex({
         setShowModal(true);
     };
 
-    /** ドラッグ選択完了時: モーダルを開いて start/end time を自動セット */
+    /** ドラッグ選択完了時: クリックした日付と時間範囲をモーダルに自動セット */
     const handleSelect = (selectInfo: DateSelectArg) => {
-        openCreate(toHHMM(selectInfo.start), toHHMM(selectInfo.end));
+        const date = selectInfo.start.toISOString().slice(0, 10);
+        openCreate(date, toHHMM(selectInfo.start), toHHMM(selectInfo.end));
     };
 
     /** イベントクリック時: 編集モーダルを開く */
@@ -338,14 +352,14 @@ export default function WorkLogsIndex({
         ? stories.filter((s) => s.epic_id === Number(data.epic_id))
         : stories;
 
-    /** WorkLogRow を FullCalendar の EventInput に変換する */
+    /** WorkLogRow を FullCalendar の EventInput に変換する（日付は log.date を使用） */
     const calendarEvents: EventInput[] = logs
         .filter((l) => l.start_time && l.end_time)
         .map((log) => ({
             id: String(log.id),
             title: logTitle(log),
-            start: `${filters.date}T${log.start_time}`,
-            end: `${filters.date}T${log.end_time}`,
+            start: `${log.date}T${log.start_time}`,
+            end: `${log.date}T${log.end_time}`,
             backgroundColor: CATEGORY_COLORS[log.category ?? ''] ?? '#3b82f6',
             borderColor: 'transparent',
             extendedProps: { log },
@@ -355,45 +369,56 @@ export default function WorkLogsIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="実績入力" />
             <div className="flex flex-col gap-4 p-6">
-                {/* ヘッダー: 日付ナビ + メンバー + 合計 */}
+                {/* ヘッダー: 週ナビ + メンバー + 合計 */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
-                        {/* 日付ナビゲーション */}
+                        {/* 週ナビゲーション */}
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={() =>
                                     applyFilter(
-                                        shiftDate(filters.date, -1),
+                                        shiftDate(filters.week_start, -7),
                                         filters.member_id?.toString() ?? '',
                                     )
                                 }
                                 className="rounded border border-sidebar-border/70 px-2 py-1 text-sm hover:bg-muted/50"
-                                aria-label="前日"
+                                aria-label="前の週"
                             >
                                 ◀
                             </button>
-                            <input
-                                type="date"
-                                value={filters.date}
-                                onChange={(e) =>
-                                    applyFilter(
-                                        e.target.value,
-                                        filters.member_id?.toString() ?? '',
-                                    )
-                                }
-                                className="rounded border border-sidebar-border/70 bg-background px-2 py-1 text-sm"
-                            />
+                            <span className="min-w-48 text-center text-sm font-medium">
+                                {weekRangeLabel(filters.week_start)}
+                            </span>
                             <button
                                 onClick={() =>
                                     applyFilter(
-                                        shiftDate(filters.date, 1),
+                                        shiftDate(filters.week_start, 7),
                                         filters.member_id?.toString() ?? '',
                                     )
                                 }
                                 className="rounded border border-sidebar-border/70 px-2 py-1 text-sm hover:bg-muted/50"
-                                aria-label="翌日"
+                                aria-label="次の週"
                             >
                                 ▶
+                            </button>
+                            <button
+                                onClick={() =>
+                                    applyFilter(
+                                        // 今週の月曜日にジャンプ
+                                        shiftDate(
+                                            new Date()
+                                                .toISOString()
+                                                .slice(0, 10),
+                                            -(new Date().getDay() === 0
+                                                ? 6
+                                                : new Date().getDay() - 1),
+                                        ),
+                                        filters.member_id?.toString() ?? '',
+                                    )
+                                }
+                                className="rounded border border-sidebar-border/70 px-2 py-1 text-xs hover:bg-muted/50"
+                            >
+                                今週
                             </button>
                         </div>
 
@@ -401,7 +426,7 @@ export default function WorkLogsIndex({
                         <select
                             value={filters.member_id?.toString() ?? ''}
                             onChange={(e) =>
-                                applyFilter(filters.date, e.target.value)
+                                applyFilter(filters.week_start, e.target.value)
                             }
                             className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-1.5 text-sm"
                         >
@@ -416,7 +441,7 @@ export default function WorkLogsIndex({
 
                     <div className="flex items-center gap-3">
                         <span className="text-sm text-muted-foreground">
-                            合計:{' '}
+                            週合計:{' '}
                             <span className="font-semibold text-foreground">
                                 {totalHours}h
                             </span>
@@ -430,12 +455,18 @@ export default function WorkLogsIndex({
                     </div>
                 </div>
 
-                {/* タイムラインカレンダー */}
+                {/* タイムラインカレンダー（週表示） */}
                 <div className="rounded-xl border border-sidebar-border/70 bg-card p-2">
+                    {/*
+                     * key={filters.week_start}: 週が変わるたびに FullCalendar を再マウントして
+                     * initialDate が正しく反映されるようにする
+                     */}
                     <FullCalendar
+                        key={filters.week_start}
                         plugins={[timeGridPlugin, interactionPlugin]}
-                        initialView="timeGridDay"
-                        initialDate={filters.date}
+                        initialView="timeGridWeek"
+                        initialDate={filters.week_start}
+                        firstDay={1}
                         headerToolbar={false}
                         selectable={true}
                         selectMirror={true}
@@ -462,6 +493,12 @@ export default function WorkLogsIndex({
                             hour: '2-digit',
                             minute: '2-digit',
                             hour12: false,
+                        }}
+                        dayHeaderFormat={{
+                            weekday: 'short',
+                            month: 'numeric',
+                            day: 'numeric',
+                            omitCommas: true,
                         }}
                     />
                 </div>

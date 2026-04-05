@@ -28,14 +28,16 @@ test('実績入力一覧が表示される', function () {
         );
 });
 
-test('指定日のワークログのみ返される', function () {
+test('指定週のワークログのみ返される', function () {
     $user = User::factory()->create();
 
-    WorkLog::factory()->create(['date' => '2026-04-01', 'start_time' => '09:00', 'end_time' => '11:00', 'hours' => 2.0]);
-    WorkLog::factory()->create(['date' => '2026-04-02', 'start_time' => '09:00', 'end_time' => '12:00', 'hours' => 3.0]);
+    // 2026-03-30（月）〜 2026-04-05（日）の週
+    WorkLog::factory()->create(['date' => '2026-03-30', 'start_time' => '09:00', 'end_time' => '11:00', 'hours' => 2.0]);
+    // 週外（前週）
+    WorkLog::factory()->create(['date' => '2026-03-29', 'start_time' => '09:00', 'end_time' => '12:00', 'hours' => 3.0]);
 
     $this->actingAs($user)
-        ->get(route('work-logs.index', ['date' => '2026-04-01']))
+        ->get(route('work-logs.index', ['week_start' => '2026-03-30']))
         ->assertInertia(fn ($page) => $page
             ->has('logs', 1)
             ->where('logs.0.hours', 2)
@@ -211,11 +213,12 @@ test('メンバーフィルタで該当メンバーのログのみ返される',
     $memberA = Member::factory()->create();
     $memberB = Member::factory()->create();
 
-    WorkLog::factory()->create(['date' => '2026-04-05', 'start_time' => '09:00', 'end_time' => '10:00', 'member_id' => $memberA->id, 'hours' => 1.0]);
-    WorkLog::factory()->create(['date' => '2026-04-05', 'start_time' => '10:00', 'end_time' => '12:00', 'member_id' => $memberB->id, 'hours' => 2.0]);
+    // 2026-04-01（水）は 2026-03-30 週（月〜日）に属する
+    WorkLog::factory()->create(['date' => '2026-04-01', 'start_time' => '09:00', 'end_time' => '10:00', 'member_id' => $memberA->id, 'hours' => 1.0]);
+    WorkLog::factory()->create(['date' => '2026-04-01', 'start_time' => '10:00', 'end_time' => '12:00', 'member_id' => $memberB->id, 'hours' => 2.0]);
 
     $this->actingAs($user)
-        ->get(route('work-logs.index', ['date' => '2026-04-05', 'member_id' => $memberA->id]))
+        ->get(route('work-logs.index', ['week_start' => '2026-03-30', 'member_id' => $memberA->id]))
         ->assertInertia(fn ($page) => $page
             ->has('logs', 1)
             ->where('logs.0.member_id', $memberA->id)
