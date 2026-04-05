@@ -78,6 +78,10 @@ interface Props {
     statusOptions: string[];
     /** 設定画面で管理する優先度選択肢（GitHub Projects の値または手動設定値） */
     priorityOptions: string[];
+    /** GitHub Projects から取得したステータスの色情報（name => GitHub color enum） */
+    statusColors: Record<string, string>;
+    /** GitHub Projects から取得した優先度の色情報（name => GitHub color enum） */
+    priorityColors: Record<string, string>;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -92,25 +96,30 @@ const STATUS_CLASSES: Record<string, string> = {
     done: 'bg-green-100 text-green-700',
 };
 
-/** GitHub Projects の Status バッジスタイル（英語値そのまま表示） */
-const GITHUB_STATUS_CLASSES: Record<string, string> = {
-    Todo: 'bg-gray-100 text-gray-600',
-    'In Progress': 'bg-blue-100 text-blue-700',
-    Done: 'bg-green-100 text-green-700',
-    'On Hold': 'bg-yellow-100 text-yellow-700',
-    Cancelled: 'bg-red-100 text-red-600',
-};
+/**
+ * GitHub Projects の color enum 値を Tailwind クラスに変換する。
+ *
+ * GitHub が返す色: BLUE, GREEN, RED, YELLOW, ORANGE, PINK, PURPLE, GRAY
+ * 同期前など color が未設定の場合はデフォルトのニュートラルカラーを返す。
+ */
+function githubColorToTailwind(color: string | undefined): string {
+    const map: Record<string, string> = {
+        BLUE: 'bg-blue-100 text-blue-700 border-blue-200',
+        GREEN: 'bg-green-100 text-green-700 border-green-200',
+        RED: 'bg-red-100 text-red-600 border-red-200',
+        YELLOW: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+        ORANGE: 'bg-orange-100 text-orange-700 border-orange-200',
+        PINK: 'bg-pink-100 text-pink-700 border-pink-200',
+        PURPLE: 'bg-purple-100 text-purple-700 border-purple-200',
+        GRAY: 'bg-gray-100 text-gray-600 border-gray-200',
+    };
+    return map[color ?? ''] ?? 'bg-muted text-muted-foreground border-border';
+}
 
 const PRIORITY_LABELS: Record<string, string> = {
     high: '高',
     medium: '中',
     low: '低',
-};
-
-const PRIORITY_CLASSES: Record<string, string> = {
-    high: 'bg-red-100 text-red-700 border border-red-200',
-    medium: 'bg-yellow-100 text-yellow-700 border border-yellow-200',
-    low: 'bg-gray-100 text-gray-500 border border-gray-200',
 };
 
 /** 残ポイントから推定スプリント数を計算する */
@@ -209,11 +218,15 @@ function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
 function EpicCard({
     epic,
     estimation,
+    statusColors,
+    priorityColors,
     onEdit,
     onDelete,
 }: {
     epic: EpicRow;
     estimation: Estimation;
+    statusColors: Record<string, string>;
+    priorityColors: Record<string, string>;
     onEdit: (epic: EpicRow) => void;
     onDelete: (epic: EpicRow) => void;
 }) {
@@ -231,32 +244,28 @@ function EpicCard({
             <div className="flex items-start justify-between gap-4 px-6 py-4">
                 <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                        {/* 優先度バッジ */}
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_CLASSES[epic.priority] ?? ''}`}
-                        >
-                            ↑{PRIORITY_LABELS[epic.priority] ?? epic.priority}
-                        </span>
-                        {/* ステータスバッジ */}
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? ''}`}
-                        >
-                            {STATUS_LABELS[epic.status] ?? epic.status}
-                        </span>
-                        {/* GitHub Projects ステータスバッジ（同期時に自動設定） */}
+                        {/* GitHub Projects 優先度バッジ（同期時に自動設定・GitHub 色を使用） */}
+                        {epic.github_priority && (
+                            <span
+                                className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${githubColorToTailwind(priorityColors[epic.github_priority])}`}
+                            >
+                                ↑{epic.github_priority}
+                            </span>
+                        )}
+                        {/* GitHub Projects ステータスバッジ（同期時に自動設定・GitHub 色を使用） */}
                         {epic.github_status && (
                             <span
-                                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${GITHUB_STATUS_CLASSES[epic.github_status] ?? 'bg-muted text-muted-foreground'}`}
+                                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${githubColorToTailwind(statusColors[epic.github_status])}`}
                             >
                                 {epic.github_status}
                             </span>
                         )}
-                        {/* GitHub Projects 優先度バッジ（同期時に自動設定） */}
-                        {epic.github_priority && (
-                            <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
-                                ★ {epic.github_priority}
-                            </span>
-                        )}
+                        {/* アプリ手動ステータスバッジ（GitHub 同期後も独立して管理） */}
+                        <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? 'bg-muted text-muted-foreground'}`}
+                        >
+                            {STATUS_LABELS[epic.status] ?? epic.status}
+                        </span>
                         <span className="font-medium">{epic.title}</span>
                     </div>
                     {epic.description && (
@@ -575,6 +584,8 @@ export default function EpicsIndex({
     estimation,
     statusOptions,
     priorityOptions,
+    statusColors,
+    priorityColors,
 }: Props) {
     const [showForm, setShowForm] = useState(false);
     const [editingEpic, setEditingEpic] = useState<EpicRow | null>(null);
@@ -932,6 +943,8 @@ export default function EpicsIndex({
                                     key={epic.id}
                                     epic={epic}
                                     estimation={estimation}
+                                    statusColors={statusColors}
+                                    priorityColors={priorityColors}
                                     onEdit={openEdit}
                                     onDelete={handleDelete}
                                 />

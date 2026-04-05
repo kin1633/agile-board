@@ -454,13 +454,15 @@ class GitHubGraphQLClient
     }
 
     /**
-     * ProjectV2 の全 SingleSelectField とその選択肢を取得する。
+     * ProjectV2 の全 SingleSelectField とその選択肢（名前・色）を取得する。
      *
-     * フィールド名 => 選択肢名リスト のマップを返す。
+     * フィールド名 => 選択肢リスト のマップを返す。
      * イシュー値に依存せずフィールド定義から取得するため、
      * 未割り当て選択肢も含めて全件取得できる。
+     * color は GitHub 側の enum 値（BLUE, GREEN, RED, YELLOW, ORANGE, PINK, PURPLE, GRAY）。
      *
-     * @return array<string, list<string>> 例: ['Status' => ['Todo', 'In Progress'], 'Priority' => ['p0', 'p1']]
+     * @return array<string, list<array{name: string, color: string}>>
+     *                                                                 例: ['Status' => [['name' => 'Todo', 'color' => 'GRAY'], ...]]
      */
     public function fetchProjectSingleSelectOptions(
         string $owner,
@@ -479,6 +481,7 @@ class GitHubGraphQLClient
                                 name
                                 options {
                                     name
+                                    color
                                 }
                             }
                         }
@@ -501,7 +504,10 @@ class GitHubGraphQLClient
             if (! isset($field['options'])) {
                 continue;
             }
-            $result[$field['name']] = collect($field['options'])->pluck('name')->all();
+            $result[$field['name']] = array_map(
+                fn ($opt) => ['name' => $opt['name'], 'color' => $opt['color'] ?? 'GRAY'],
+                $field['options']
+            );
         }
 
         return $result;

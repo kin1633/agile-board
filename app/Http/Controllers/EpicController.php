@@ -30,6 +30,9 @@ class EpicController extends Controller
             // 設定から取得したステータス・優先度の選択肢（エピックフォームのドロップダウン用）
             'statusOptions' => json_decode(Setting::where('key', 'epic_github_status_order')->value('value') ?? '[]', true),
             'priorityOptions' => json_decode(Setting::where('key', 'epic_github_priority_order')->value('value') ?? '[]', true),
+            // GitHub Projects から取得した色情報（name => GitHub color enum のマップ）
+            'statusColors' => json_decode(Setting::where('key', 'epic_github_status_colors')->value('value') ?? '{}', true),
+            'priorityColors' => json_decode(Setting::where('key', 'epic_github_priority_colors')->value('value') ?? '{}', true),
         ]);
     }
 

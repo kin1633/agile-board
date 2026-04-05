@@ -340,7 +340,8 @@ class GitHubSyncService
             ->whereNotNull('github_project_number')
             ->get();
 
-        // Status と Priority の選択肢を全リポジトリから収集する
+        // Status と Priority の選択肢（名前・色）を全リポジトリから収集する
+        // 複数リポジトリが同一フィールド名を持つ場合は後勝ち（同名なら色も同じはず）
         $statusOptions = [];
         $priorityOptions = [];
 
@@ -354,14 +355,22 @@ class GitHubSyncService
             $priorityOptions = array_merge($priorityOptions, $fieldOptions['Priority'] ?? []);
         }
 
+        // 名前の重複を除去（name をキーにして array_values で再インデックス）
+        $statusOptions = array_values(collect($statusOptions)->keyBy('name')->all());
+        $priorityOptions = array_values(collect($priorityOptions)->keyBy('name')->all());
+
         $this->mergeSettingOptions(
             'epic_github_status_order',
-            array_values(array_unique($statusOptions))
+            collect($statusOptions)->pluck('name')->all()
         );
         $this->mergeSettingOptions(
             'epic_github_priority_order',
-            array_values(array_unique($priorityOptions))
+            collect($priorityOptions)->pluck('name')->all()
         );
+
+        // GitHub から取得した色情報を設定テーブルに保存する（name => color のマップ）
+        $this->updateColorSettings('epic_github_status_colors', $statusOptions);
+        $this->updateColorSettings('epic_github_priority_colors', $priorityOptions);
     }
 
     /**
@@ -390,6 +399,28 @@ class GitHubSyncService
 
         Setting::where('key', $settingsKey)
             ->update(['value' => json_encode(array_merge($filtered, $newValues))]);
+    }
+
+    /**
+     * GitHub Projects から取得した選択肢の色情報を設定テーブルに保存する。
+     *
+     * name => color（GitHub enum: BLUE/GREEN/RED 等）のマップとして上書き保存する。
+     * 色はユーザーが変更する想定がないため、同期のたびに全量上書きする。
+     *
+     * @param  list<array{name: string, color: string}>  $options
+     */
+    private function updateColorSettings(string $settingsKey, array $options): void
+    {
+        if (empty($options)) {
+            return;
+        }
+
+        $colorMap = collect($options)->pluck('color', 'name')->all();
+
+        Setting::updateOrCreate(
+            ['key' => $settingsKey],
+            ['value' => json_encode($colorMap)]
+        );
     }
 
     /**
