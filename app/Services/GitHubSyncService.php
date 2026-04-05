@@ -76,12 +76,10 @@ class GitHubSyncService
 
         // Issue の project_status を元に Epic の started_at を自動設定する
         $this->syncEpicStartDates();
-        // 未知のステータス値を優先度リストへ先に追記する
-        $this->syncEpicStatusOptions();
+        // GitHub Projects の SingleSelectField 選択肢を設定に同期する（Status / Priority）
+        $this->syncSingleSelectOptions($githubToken);
         // 優先度リストを使って Epic の github_status を集計する
         $this->syncEpicGitHubStatuses();
-        // 未知の優先度値を優先度リストへ先に追記する
-        $this->syncEpicPriorityOptions();
         // 優先度リストを使って Epic の github_priority を集計する
         $this->syncEpicGitHubPriorities();
     }
@@ -327,26 +325,71 @@ class GitHubSyncService
     }
 
     /**
-     * Issue.project_status の全ユニーク値を settings の優先度リストに追記する。
+     * GitHub Projects の SingleSelectField 選択肢を設定テーブルへ同期する。
      *
-     * 既存リストに含まれない値は末尾に追加する（既存の順序は変えない）。
+     * イシュー値ではなくフィールド定義から取得するため、
+     * 未割り当て選択肢も含めて全件同期できる。
+     *
+     * - API に存在する値のみを保持（削除された選択肢は除去）
+     * - ユーザーが設定画面で変更した並び順は維持
+     * - API に新しく追加された値は末尾に追加
      */
-    private function syncEpicStatusOptions(): void
+    private function syncSingleSelectOptions(string $token): void
     {
-        $existing = json_decode(
-            Setting::where('key', 'epic_github_status_order')->value('value') ?? '[]',
+        $repositories = Repository::where('active', true)
+            ->whereNotNull('github_project_number')
+            ->get();
+
+        // Status と Priority の選択肢を全リポジトリから収集する
+        $statusOptions = [];
+        $priorityOptions = [];
+
+        foreach ($repositories as $repository) {
+            $fieldOptions = $this->graphql->fetchProjectSingleSelectOptions(
+                $repository->owner,
+                $repository->github_project_number,
+                $token
+            );
+            $statusOptions = array_merge($statusOptions, $fieldOptions['Status'] ?? []);
+            $priorityOptions = array_merge($priorityOptions, $fieldOptions['Priority'] ?? []);
+        }
+
+        $this->mergeSettingOptions(
+            'epic_github_status_order',
+            array_values(array_unique($statusOptions))
+        );
+        $this->mergeSettingOptions(
+            'epic_github_priority_order',
+            array_values(array_unique($priorityOptions))
+        );
+    }
+
+    /**
+     * 設定テーブルの順序リストを API から取得した選択肢で更新する。
+     *
+     * 既存の並び順を維持しつつ、API に存在しない古い値を除去し、
+     * 新しい値を末尾に追加する。
+     *
+     * @param  list<string>  $apiOptions  API から取得した選択肢
+     */
+    private function mergeSettingOptions(string $settingsKey, array $apiOptions): void
+    {
+        if (empty($apiOptions)) {
+            return;
+        }
+
+        $existingOrder = json_decode(
+            Setting::where('key', $settingsKey)->value('value') ?? '[]',
             true
         );
 
-        $fromIssues = Issue::whereNotNull('project_status')
-            ->distinct()
-            ->pluck('project_status')
-            ->toArray();
+        // 既存の順序を維持しつつ API に存在する値のみ残す
+        $filtered = array_values(array_filter($existingOrder, fn ($v) => in_array($v, $apiOptions, true)));
+        // API にあるが既存リストにない新しい値を末尾に追加
+        $newValues = array_values(array_diff($apiOptions, $filtered));
 
-        $merged = array_values(array_unique(array_merge($existing, $fromIssues)));
-
-        Setting::where('key', 'epic_github_status_order')
-            ->update(['value' => json_encode($merged)]);
+        Setting::where('key', $settingsKey)
+            ->update(['value' => json_encode(array_merge($filtered, $newValues))]);
     }
 
     /**
@@ -379,29 +422,6 @@ class GitHubSyncService
 
             $epic->update(['github_status' => $githubStatus]);
         }
-    }
-
-    /**
-     * Issue.project_priority の全ユニーク値を settings の優先度リストに追記する。
-     *
-     * 既存リストに含まれない値は末尾に追加する（既存の順序は変えない）。
-     */
-    private function syncEpicPriorityOptions(): void
-    {
-        $existing = json_decode(
-            Setting::where('key', 'epic_github_priority_order')->value('value') ?? '[]',
-            true
-        );
-
-        $fromIssues = Issue::whereNotNull('project_priority')
-            ->distinct()
-            ->pluck('project_priority')
-            ->toArray();
-
-        $merged = array_values(array_unique(array_merge($existing, $fromIssues)));
-
-        Setting::where('key', 'epic_github_priority_order')
-            ->update(['value' => json_encode($merged)]);
     }
 
     /**

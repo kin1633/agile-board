@@ -454,6 +454,60 @@ class GitHubGraphQLClient
     }
 
     /**
+     * ProjectV2 の全 SingleSelectField とその選択肢を取得する。
+     *
+     * フィールド名 => 選択肢名リスト のマップを返す。
+     * イシュー値に依存せずフィールド定義から取得するため、
+     * 未割り当て選択肢も含めて全件取得できる。
+     *
+     * @return array<string, list<string>> 例: ['Status' => ['Todo', 'In Progress'], 'Priority' => ['p0', 'p1']]
+     */
+    public function fetchProjectSingleSelectOptions(
+        string $owner,
+        int $projectNumber,
+        string $token
+    ): array {
+        $ownerType = $this->resolveOwnerType($owner, $token);
+
+        $query = <<<GRAPHQL
+        query(\$owner: String!, \$number: Int!) {
+            {$ownerType}(login: \$owner) {
+                projectV2(number: \$number) {
+                    fields(first: 50) {
+                        nodes {
+                            ... on ProjectV2SingleSelectField {
+                                name
+                                options {
+                                    name
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        GRAPHQL;
+
+        $data = $this->query($query, [
+            'owner' => $owner,
+            'number' => $projectNumber,
+        ], $token);
+
+        $fields = $data[$ownerType]['projectV2']['fields']['nodes'] ?? [];
+        $result = [];
+
+        foreach ($fields as $field) {
+            // SingleSelectField のみ options キーを持つ
+            if (! isset($field['options'])) {
+                continue;
+            }
+            $result[$field['name']] = collect($field['options'])->pluck('name')->all();
+        }
+
+        return $result;
+    }
+
+    /**
      * fieldValues から指定フィールド名の SingleSelectField の値を返す。
      *
      * GitHub Projects の Status などの SingleSelectField に使用する。
