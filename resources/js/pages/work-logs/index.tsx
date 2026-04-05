@@ -68,11 +68,23 @@ function kindOf(category: CategoryValue): 'dev' | 'pm' | 'ops' {
     return 'ops';
 }
 
+/**
+ * Date オブジェクトをローカル時刻で YYYY-MM-DD にフォーマットする。
+ * toISOString() は UTC 変換されるため UTC+9 環境では日付がずれる。
+ */
+function localDateString(d: Date): string {
+    return [
+        d.getFullYear(),
+        String(d.getMonth() + 1).padStart(2, '0'),
+        String(d.getDate()).padStart(2, '0'),
+    ].join('-');
+}
+
 /** YYYY-MM-DD の日付を指定日数ずらす */
 function shiftDate(dateStr: string, days: number): string {
     const d = new Date(dateStr + 'T00:00:00');
     d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
+    return localDateString(d);
 }
 
 /** week_start から「YYYY年 M/D 〜 M/D」形式の週範囲表示文字列を生成する */
@@ -83,6 +95,52 @@ function weekRangeLabel(weekStart: string): string {
     const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
     return `${start.getFullYear()}年 ${fmt(start)} 〜 ${fmt(end)}`;
 }
+
+/**
+ * 日本の国民の祝日セット（2025〜2026年）。
+ * 春分・秋分は年により±1日ずれる場合があるため概算値。
+ */
+const JAPANESE_HOLIDAYS = new Set([
+    // 2025年
+    '2025-01-01',
+    '2025-01-13',
+    '2025-02-11',
+    '2025-02-23',
+    '2025-02-24',
+    '2025-03-20',
+    '2025-04-29',
+    '2025-05-03',
+    '2025-05-04',
+    '2025-05-05',
+    '2025-05-06',
+    '2025-07-21',
+    '2025-08-11',
+    '2025-09-15',
+    '2025-09-23',
+    '2025-10-13',
+    '2025-11-03',
+    '2025-11-23',
+    '2025-11-24',
+    // 2026年
+    '2026-01-01',
+    '2026-01-12',
+    '2026-02-11',
+    '2026-02-23',
+    '2026-03-20',
+    '2026-04-29',
+    '2026-05-03',
+    '2026-05-04',
+    '2026-05-05',
+    '2026-05-06',
+    '2026-07-20',
+    '2026-08-11',
+    '2026-09-21',
+    '2026-09-22',
+    '2026-09-23',
+    '2026-10-12',
+    '2026-11-03',
+    '2026-11-23',
+]);
 
 /** Date オブジェクトから HH:mm 文字列を生成する */
 function toHHMM(date: Date): string {
@@ -242,7 +300,7 @@ export default function WorkLogsIndex({
 
     /** ドラッグ選択完了時: クリックした日付と時間範囲をモーダルに自動セット */
     const handleSelect = (selectInfo: DateSelectArg) => {
-        const date = selectInfo.start.toISOString().slice(0, 10);
+        const date = localDateString(selectInfo.start);
         openCreate(date, toHHMM(selectInfo.start), toHHMM(selectInfo.end));
     };
 
@@ -285,7 +343,7 @@ export default function WorkLogsIndex({
         router.put(
             update({ workLog: log.id }).url,
             {
-                date: dropInfo.event.start!.toISOString().slice(0, 10),
+                date: localDateString(dropInfo.event.start!),
                 start_time: toHHMM(dropInfo.event.start!),
                 end_time: toHHMM(dropInfo.event.end!),
                 member_id: log.member_id,
@@ -352,6 +410,31 @@ export default function WorkLogsIndex({
         ? stories.filter((s) => s.epic_id === Number(data.epic_id))
         : stories;
 
+    /**
+     * 土日・祝日の列に背景色を付けるバックグラウンドイベント。
+     * 土曜=青系、日曜・祝日=赤系で色分けする。
+     */
+    const backgroundEvents: EventInput[] = Array.from({ length: 7 }, (_, i) => {
+        const date = shiftDate(filters.week_start, i);
+        const dow = new Date(date + 'T00:00:00').getDay();
+        return {
+            date,
+            isSat: dow === 6,
+            isSun: dow === 0,
+            isHol: JAPANESE_HOLIDAYS.has(date),
+        };
+    })
+        .filter(({ isSat, isSun, isHol }) => isSat || isSun || isHol)
+        .map(({ date, isSun, isHol }) => ({
+            start: `${date}T00:00:00`,
+            end: `${date}T23:59:59`,
+            display: 'background',
+            backgroundColor:
+                isSun || isHol
+                    ? 'rgba(254,226,226,0.5)'
+                    : 'rgba(219,234,254,0.5)',
+        }));
+
     /** WorkLogRow を FullCalendar の EventInput に変換する（日付は log.date を使用） */
     const calendarEvents: EventInput[] = logs
         .filter((l) => l.start_time && l.end_time)
@@ -406,9 +489,7 @@ export default function WorkLogsIndex({
                                     applyFilter(
                                         // 今週の月曜日にジャンプ
                                         shiftDate(
-                                            new Date()
-                                                .toISOString()
-                                                .slice(0, 10),
+                                            localDateString(new Date()),
                                             -(new Date().getDay() === 0
                                                 ? 6
                                                 : new Date().getDay() - 1),
@@ -471,14 +552,14 @@ export default function WorkLogsIndex({
                         selectable={true}
                         selectMirror={true}
                         editable={true}
-                        slotMinTime="07:00:00"
+                        slotMinTime="05:00:00"
                         slotMaxTime="23:00:00"
                         slotDuration="00:15:00"
                         slotLabelInterval="01:00:00"
                         allDaySlot={false}
                         nowIndicator={true}
                         scrollTime="09:00:00"
-                        events={calendarEvents}
+                        events={[...calendarEvents, ...backgroundEvents]}
                         select={handleSelect}
                         eventClick={handleEventClick}
                         eventResize={handleEventResize}
