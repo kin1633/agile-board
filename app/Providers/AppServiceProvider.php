@@ -3,11 +3,11 @@
 namespace App\Providers;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Inertia\Inertia;
 use Laravel\Fortify\Contracts\LoginViewResponse;
 
 class AppServiceProvider extends ServiceProvider
@@ -17,13 +17,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Fortify の /login ルートは GitHub OAuth にリダイレクトする
-        // （このアプリは GitHub OAuth のみで認証するため）
+        // Fortify の /login ルートでログインページ（GitHub OAuth ボタン）を表示する
+        // 直接 GitHub にリダイレクトするとログアウト後に即再認証されてしまうため、
+        // ログインページを経由してユーザーに選択させる
         $this->app->bind(LoginViewResponse::class, fn () => new class implements LoginViewResponse
         {
-            public function toResponse($request): RedirectResponse
+            public function toResponse($request)
             {
-                return redirect()->route('auth.github');
+                return Inertia::render('auth/login');
             }
         });
     }
