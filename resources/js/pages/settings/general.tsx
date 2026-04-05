@@ -11,12 +11,20 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 interface Props {
     hoursPerPersonDay: number;
+    workStartTime: string;
+    workEndTime: string;
 }
 
-export default function GeneralSettings({ hoursPerPersonDay }: Props) {
+export default function GeneralSettings({
+    hoursPerPersonDay,
+    workStartTime,
+    workEndTime,
+}: Props) {
     const { data, setData, patch, processing, errors, recentlySuccessful } =
         useForm({
             hours_per_person_day: hoursPerPersonDay,
+            work_start_time: workStartTime,
+            work_end_time: workEndTime,
         });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -81,6 +89,66 @@ export default function GeneralSettings({ hoursPerPersonDay }: Props) {
                                     {errors.hours_per_person_day}
                                 </p>
                             )}
+                        </div>
+
+                        <hr className="border-sidebar-border/50" />
+
+                        <div>
+                            <label className="mb-1 block text-sm font-medium">
+                                定時設定
+                            </label>
+                            <p className="mb-2 text-xs text-muted-foreground">
+                                チーム全体の定時（開始・終了）を設定します。実績入力フォームの初期値に使用されます。
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-xs text-muted-foreground">
+                                        開始
+                                    </span>
+                                    <input
+                                        type="time"
+                                        value={data.work_start_time}
+                                        onChange={(e) =>
+                                            setData(
+                                                'work_start_time',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                        required
+                                    />
+                                    {errors.work_start_time && (
+                                        <p className="text-xs text-red-500">
+                                            {errors.work_start_time}
+                                        </p>
+                                    )}
+                                </div>
+                                <span className="mt-4 text-sm text-muted-foreground">
+                                    〜
+                                </span>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-xs text-muted-foreground">
+                                        終了
+                                    </span>
+                                    <input
+                                        type="time"
+                                        value={data.work_end_time}
+                                        onChange={(e) =>
+                                            setData(
+                                                'work_end_time',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                        required
+                                    />
+                                    {errors.work_end_time && (
+                                        <p className="text-xs text-red-500">
+                                            {errors.work_end_time}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
                         <div className="flex items-center gap-3">

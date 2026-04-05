@@ -7,6 +7,7 @@ use App\Http\Controllers\Settings\MemberController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\RepositoryController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\WorkLogCategoryController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
@@ -36,6 +37,12 @@ Route::middleware(['auth'])->group(function () {
     Route::post('settings/holidays/import', [HolidayController::class, 'import'])->name('settings.holidays.import');
     Route::post('settings/holidays', [HolidayController::class, 'store'])->name('settings.holidays.store');
     Route::delete('settings/holidays/{holiday}', [HolidayController::class, 'destroy'])->name('settings.holidays.destroy');
+
+    // 実績入力種別管理
+    Route::get('settings/work-log-categories', [WorkLogCategoryController::class, 'index'])->name('settings.work-log-categories');
+    Route::post('settings/work-log-categories', [WorkLogCategoryController::class, 'store'])->name('settings.work-log-categories.store');
+    Route::patch('settings/work-log-categories/{workLogCategory}', [WorkLogCategoryController::class, 'update'])->name('settings.work-log-categories.update');
+    Route::delete('settings/work-log-categories/{workLogCategory}', [WorkLogCategoryController::class, 'destroy'])->name('settings.work-log-categories.destroy');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');

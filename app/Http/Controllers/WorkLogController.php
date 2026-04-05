@@ -6,11 +6,14 @@ use App\Models\Epic;
 use App\Models\Holiday;
 use App\Models\Issue;
 use App\Models\Member;
+use App\Models\Setting;
 use App\Models\WorkLog;
+use App\Models\WorkLogCategory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -52,6 +55,8 @@ class WorkLogController extends Controller
             'note' => $log->note,
         ]);
 
+        $categories = WorkLogCategory::active()->get(['id', 'value', 'label', 'group_name', 'color', 'is_billable', 'is_default']);
+
         $epics = Epic::orderBy('title')->get(['id', 'title']);
 
         // ストーリー（親イシュー）のみをドロップダウン用に取得
@@ -79,6 +84,7 @@ class WorkLogController extends Controller
 
         return Inertia::render('work-logs/index', [
             'logs' => $logs,
+            'categories' => $categories,
             'epics' => $epics,
             'stories' => $stories,
             'tasks' => $tasks,
@@ -86,6 +92,10 @@ class WorkLogController extends Controller
             'currentMemberId' => $currentMemberId,
             'filters' => ['week_start' => $weekStart, 'member_id' => $memberId],
             'holidays' => $holidays,
+            'workSchedule' => [
+                'startTime' => Setting::get('work_start_time', '10:00'),
+                'endTime' => Setting::get('work_end_time', '19:00'),
+            ],
         ]);
     }
 
@@ -128,11 +138,17 @@ class WorkLogController extends Controller
     /**
      * store/update 共通のバリデーションルール。
      * hours は start_time/end_time から自動計算するため受け付けない。
+     * カテゴリはDBから動的に取得してバリデーションする（is_default=trueのデフォルト種別はnullで保存）。
      *
      * @return array<string, mixed[]>
      */
     private function rules(): array
     {
+        $validValues = WorkLogCategory::where('is_active', true)
+            ->where('is_default', false)
+            ->pluck('value')
+            ->toArray();
+
         return [
             'date' => ['required', 'date'],
             'start_time' => ['required', 'date_format:H:i'],
@@ -140,8 +156,7 @@ class WorkLogController extends Controller
             'member_id' => ['nullable', 'integer', 'exists:members,id'],
             'epic_id' => ['nullable', 'integer', 'exists:epics,id'],
             'issue_id' => ['nullable', 'integer', 'exists:issues,id'],
-            // null=開発作業, pm_estimate/pm_meeting/pm_other, ops_inquiry/ops_fix/ops_incident/ops_other
-            'category' => ['nullable', 'string', 'in:pm_estimate,pm_meeting,pm_other,ops_inquiry,ops_fix,ops_incident,ops_other'],
+            'category' => ['nullable', 'string', Rule::in($validValues)],
             'note' => ['nullable', 'string', 'max:500'],
         ];
     }

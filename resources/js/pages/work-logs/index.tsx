@@ -24,48 +24,14 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: '実績入力', href: workLogsIndex().url },
 ];
 
-/** カテゴリ値の定義 */
-const CATEGORY_OPTIONS = [
-    { value: '', label: '開発作業', group: null },
-    { value: 'pm_estimate', label: '作業工数見積', group: 'PJ管理工数' },
-    { value: 'pm_meeting', label: '内部打ち合わせ時間', group: 'PJ管理工数' },
-    { value: 'pm_other', label: 'その他PJ管理', group: 'PJ管理工数' },
-    { value: 'ops_inquiry', label: '問い合わせ対応', group: '保守・運用工数' },
-    { value: 'ops_fix', label: 'リリース後改修', group: '保守・運用工数' },
-    { value: 'ops_incident', label: '障害対応', group: '保守・運用工数' },
-    { value: 'ops_other', label: 'その他運用', group: '保守・運用工数' },
-] as const;
-
-type CategoryValue = (typeof CATEGORY_OPTIONS)[number]['value'];
-
-/** カテゴリごとの色設定（FullCalendar のイベント背景色） */
-const CATEGORY_COLORS: Record<string, string> = {
-    '': '#3b82f6', // 開発作業: blue
-    pm_estimate: '#f97316', // PJ管理工数: orange
-    pm_meeting: '#f97316',
-    pm_other: '#f97316',
-    ops_inquiry: '#8b5cf6', // 保守・運用: violet
-    ops_fix: '#8b5cf6',
-    ops_incident: '#ef4444', // 障害対応: red
-    ops_other: '#8b5cf6',
-};
-
-function categoryLabel(value: string | null): string {
-    if (!value) {
-        return '開発作業';
-    }
-    return CATEGORY_OPTIONS.find((c) => c.value === value)?.label ?? value;
-}
-
-/** カテゴリ値から種別グループを判定する */
-function kindOf(category: CategoryValue): 'dev' | 'pm' | 'ops' {
-    if (!category) {
-        return 'dev';
-    }
-    if (category.startsWith('pm_')) {
-        return 'pm';
-    }
-    return 'ops';
+interface CategoryRow {
+    id: number;
+    value: string;
+    label: string;
+    group_name: string | null;
+    color: string;
+    is_billable: boolean;
+    is_default: boolean;
 }
 
 /**
@@ -150,8 +116,14 @@ interface HolidayEntry {
     name: string;
 }
 
+interface WorkSchedule {
+    startTime: string;
+    endTime: string;
+}
+
 interface Props {
     logs: WorkLogRow[];
+    categories: CategoryRow[];
     epics: EpicOption[];
     stories: StoryOption[];
     tasks: TaskOption[];
@@ -159,6 +131,7 @@ interface Props {
     currentMemberId: number | null;
     filters: { week_start: string; member_id: number | null };
     holidays: HolidayEntry[];
+    workSchedule: WorkSchedule;
 }
 
 interface FormData {
@@ -170,23 +143,13 @@ interface FormData {
     /** 開発作業時のストーリーID */
     story_id: string;
     issue_id: string;
-    category: CategoryValue;
+    category: string;
     note: string;
-}
-
-/** ログの表示タイトルを生成する */
-function logTitle(log: WorkLogRow): string {
-    if (log.category) {
-        return categoryLabel(log.category);
-    }
-    if (log.issue_title) {
-        return log.issue_title;
-    }
-    return '開発作業';
 }
 
 export default function WorkLogsIndex({
     logs,
+    categories,
     epics,
     stories,
     tasks,
@@ -194,6 +157,7 @@ export default function WorkLogsIndex({
     currentMemberId,
     filters,
     holidays,
+    workSchedule,
 }: Props) {
     const [showModal, setShowModal] = React.useState(false);
     const [editingLog, setEditingLog] = React.useState<WorkLogRow | null>(null);
@@ -211,7 +175,28 @@ export default function WorkLogsIndex({
             note: '',
         });
 
-    const kind = kindOf(data.category);
+    /** 選択中カテゴリがデフォルト（開発作業）かどうか — issue_id/story_id の表示制御に使用 */
+    const selectedCategory = categories.find((c) => c.value === data.category);
+    const isDefaultCategory = selectedCategory?.is_default ?? true;
+
+    /** カテゴリ value からラベルを引く（props から検索） */
+    const categoryLabel = (value: string | null): string => {
+        if (!value) {
+            return categories.find((c) => c.is_default)?.label ?? '開発作業';
+        }
+        return categories.find((c) => c.value === value)?.label ?? value;
+    };
+
+    /** ログの表示タイトルを生成する */
+    const logTitle = (log: WorkLogRow): string => {
+        if (log.category) {
+            return categoryLabel(log.category);
+        }
+        if (log.issue_title) {
+            return log.issue_title;
+        }
+        return categoryLabel(null);
+    };
 
     /** フィルタ変更時にページを再読み込みする */
     const applyFilter = (weekStart: string, memberId: string) => {
@@ -224,8 +209,8 @@ export default function WorkLogsIndex({
 
     const openCreate = (
         date = filters.week_start,
-        startTime = '',
-        endTime = '',
+        startTime = workSchedule.startTime,
+        endTime = workSchedule.endTime,
     ) => {
         reset();
         setData({
@@ -252,7 +237,7 @@ export default function WorkLogsIndex({
             epic_id: log.epic_id?.toString() ?? '',
             story_id: '',
             issue_id: log.issue_id?.toString() ?? '',
-            category: (log.category ?? '') as CategoryValue,
+            category: log.category ?? '',
             note: log.note ?? '',
         });
         setEditingLog(log);
@@ -323,12 +308,12 @@ export default function WorkLogsIndex({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // 種別に応じて不要なフィールドを空にする
+        // デフォルト種別（開発作業）の場合は issue_id を送信し category を null にする
         const payload = {
             ...data,
             epic_id: data.epic_id || null,
-            issue_id: kind === 'dev' ? data.issue_id || null : null,
-            category: kind === 'dev' ? null : data.category,
+            issue_id: isDefaultCategory ? data.issue_id || null : null,
+            category: isDefaultCategory ? null : data.category,
         };
 
         if (editingLog) {
@@ -407,7 +392,15 @@ export default function WorkLogsIndex({
             title: logTitle(log),
             start: `${log.date}T${log.start_time}`,
             end: `${log.date}T${log.end_time}`,
-            backgroundColor: CATEGORY_COLORS[log.category ?? ''] ?? '#3b82f6',
+            backgroundColor:
+                categories.find((c) => c.value === (log.category ?? ''))
+                    ?.color ?? '#3b82f6',
+            // 工数管理外（is_billable=false）は半透明で表示する
+            opacity:
+                categories.find((c) => c.value === (log.category ?? ''))
+                    ?.is_billable === false
+                    ? 0.5
+                    : 1,
             borderColor: 'transparent',
             extendedProps: { log },
         }));
@@ -672,42 +665,53 @@ export default function WorkLogsIndex({
                                 </label>
                                 <select
                                     value={data.category}
-                                    onChange={(e) => {
-                                        setData(
-                                            'category',
-                                            e.target.value as CategoryValue,
-                                        );
-                                    }}
+                                    onChange={(e) =>
+                                        setData('category', e.target.value)
+                                    }
                                     className="w-full rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
                                 >
-                                    <optgroup label="開発作業">
-                                        <option value="">開発作業</option>
-                                    </optgroup>
-                                    <optgroup label="PJ管理工数">
-                                        <option value="pm_estimate">
-                                            作業工数見積
-                                        </option>
-                                        <option value="pm_meeting">
-                                            内部打ち合わせ時間
-                                        </option>
-                                        <option value="pm_other">
-                                            その他PJ管理
-                                        </option>
-                                    </optgroup>
-                                    <optgroup label="保守・運用工数">
-                                        <option value="ops_inquiry">
-                                            問い合わせ対応
-                                        </option>
-                                        <option value="ops_fix">
-                                            リリース後改修
-                                        </option>
-                                        <option value="ops_incident">
-                                            障害対応
-                                        </option>
-                                        <option value="ops_other">
-                                            その他運用
-                                        </option>
-                                    </optgroup>
+                                    {/* デフォルト種別（グループなし）を先頭に表示 */}
+                                    {categories
+                                        .filter((c) => c.is_default)
+                                        .map((c) => (
+                                            <option key={c.id} value={c.value}>
+                                                {c.label}
+                                            </option>
+                                        ))}
+                                    {/* グループ別にまとめて表示（グループなしかつ非デフォルトも含む） */}
+                                    {Array.from(
+                                        new Map(
+                                            categories
+                                                .filter((c) => !c.is_default)
+                                                .map((c) => [
+                                                    c.group_name ?? '',
+                                                    c.group_name,
+                                                ]),
+                                        ).entries(),
+                                    ).map(([key, groupName]) => (
+                                        <optgroup
+                                            key={key}
+                                            label={
+                                                groupName ?? '（グループなし）'
+                                            }
+                                        >
+                                            {categories
+                                                .filter(
+                                                    (c) =>
+                                                        !c.is_default &&
+                                                        (c.group_name ?? '') ===
+                                                            key,
+                                                )
+                                                .map((c) => (
+                                                    <option
+                                                        key={c.id}
+                                                        value={c.value}
+                                                    >
+                                                        {c.label}
+                                                    </option>
+                                                ))}
+                                        </optgroup>
+                                    ))}
                                 </select>
                                 {errors.category && (
                                     <p className="mt-1 text-xs text-red-500">
@@ -716,8 +720,8 @@ export default function WorkLogsIndex({
                                 )}
                             </div>
 
-                            {/* 開発作業: エピック → ストーリー → タスク */}
-                            {kind === 'dev' && (
+                            {/* デフォルト種別（開発作業）: エピック → ストーリー → タスク */}
+                            {isDefaultCategory && (
                                 <>
                                     <div>
                                         <label className="mb-1 block text-xs font-medium">
@@ -801,8 +805,8 @@ export default function WorkLogsIndex({
                                 </>
                             )}
 
-                            {/* PJ管理・保守運用: エピックのみ紐付け可能 */}
-                            {(kind === 'pm' || kind === 'ops') && (
+                            {/* デフォルト以外の種別: エピックのみ紐付け可能 */}
+                            {!isDefaultCategory && (
                                 <div>
                                     <label className="mb-1 block text-xs font-medium">
                                         エピック（任意）

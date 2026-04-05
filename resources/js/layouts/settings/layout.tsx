@@ -11,6 +11,7 @@ import {
     members,
     labels,
     holidays,
+    workLogCategories,
 } from '@/routes/settings';
 import type { NavItem } from '@/types';
 
@@ -38,6 +39,11 @@ const sidebarNavItems: NavItem[] = [
     {
         title: '休日設定',
         href: holidays(),
+        icon: null,
+    },
+    {
+        title: '実績種別',
+        href: workLogCategories(),
         icon: null,
     },
 ];
