@@ -102,7 +102,7 @@ export default function MilestonesIndex({ upcoming, past }: Props) {
                 </div>
 
                 {/* タブ */}
-                <div className="flex rounded-lg border border-sidebar-border/70 p-0.5 text-sm">
+                <div className="flex self-start rounded-lg border border-sidebar-border/70 p-0.5 text-sm">
                     <button
                         onClick={() => setActiveTab('upcoming')}
                         className={`rounded-md px-3 py-1.5 transition-colors ${
