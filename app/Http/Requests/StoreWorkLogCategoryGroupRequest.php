@@ -23,6 +23,7 @@ class StoreWorkLogCategoryGroupRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:100', 'unique:work_log_category_groups,name'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
+            'is_billable' => ['nullable', 'boolean'],
         ];
     }
 }

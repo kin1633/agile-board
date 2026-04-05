@@ -20,7 +20,7 @@ class WorkLogCategoryController extends Controller
      */
     public function index(): Response
     {
-        $categories = WorkLogCategory::orderBy('sort_order')->get();
+        $categories = WorkLogCategory::orderBy('sort_order')->with('group')->get();
         $groups = WorkLogCategoryGroup::orderBy('sort_order')->get();
 
         return Inertia::render('settings/work-log-categories', [

@@ -29,6 +29,7 @@ class UpdateWorkLogCategoryGroupRequest extends FormRequest
             // 自分自身は除外して重複チェック
             'name' => ['required', 'string', 'max:100', Rule::unique('work_log_category_groups', 'name')->ignore($group->id)],
             'sort_order' => ['nullable', 'integer', 'min:0'],
+            'is_billable' => ['nullable', 'boolean'],
         ];
     }
 }

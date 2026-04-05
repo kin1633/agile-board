@@ -55,7 +55,7 @@ class WorkLogController extends Controller
             'note' => $log->note,
         ]);
 
-        $categories = WorkLogCategory::active()->get(['id', 'value', 'label', 'group_name', 'color', 'is_billable', 'is_default']);
+        $categories = WorkLogCategory::active()->with('group')->get();
 
         $epics = Epic::orderBy('title')->get(['id', 'title']);
 

@@ -13,6 +13,11 @@ class WorkLogCategoryGroup extends Model
     protected $fillable = [
         'name',
         'sort_order',
+        'is_billable',
+    ];
+
+    protected $casts = [
+        'is_billable' => 'boolean',
     ];
 
     /**

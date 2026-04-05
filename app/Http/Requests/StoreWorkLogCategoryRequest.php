@@ -24,7 +24,6 @@ class StoreWorkLogCategoryRequest extends FormRequest
             'label' => ['required', 'string', 'max:100'],
             'work_log_category_group_id' => ['nullable', 'integer', 'exists:work_log_category_groups,id'],
             'color' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'is_billable' => ['required', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }

@@ -27,7 +27,6 @@ interface CategoryRow {
     label: string;
     work_log_category_group_id: number | null;
     color: string;
-    is_billable: boolean;
     is_default: boolean;
     sort_order: number;
     is_active: boolean;
@@ -37,6 +36,7 @@ interface GroupRow {
     id: number;
     name: string;
     sort_order: number;
+    is_billable: boolean;
 }
 
 interface Props {
@@ -49,7 +49,6 @@ type EditValues = {
     label: string;
     work_log_category_group_id: number | null;
     color: string;
-    is_billable: boolean;
 };
 
 export default function WorkLogCategoriesSettings({
@@ -61,7 +60,6 @@ export default function WorkLogCategoriesSettings({
         label: '',
         work_log_category_group_id: null,
         color: '#3b82f6',
-        is_billable: true,
     });
 
     const handleStartEdit = (category: CategoryRow) => {
@@ -70,7 +68,6 @@ export default function WorkLogCategoriesSettings({
             label: category.label,
             work_log_category_group_id: category.work_log_category_group_id,
             color: category.color,
-            is_billable: category.is_billable,
         });
     };
 
@@ -97,13 +94,13 @@ export default function WorkLogCategoriesSettings({
         label: '',
         work_log_category_group_id: null as number | null,
         color: '#3b82f6',
-        is_billable: true,
         sort_order: categories.length,
     });
 
     const addGroupForm = useForm({
         name: '',
         sort_order: groups.length,
+        is_billable: true,
     });
 
     const handleAdd = (e: React.FormEvent) => {
@@ -129,7 +126,6 @@ export default function WorkLogCategoriesSettings({
                 label: category.label,
                 work_log_category_group_id: category.work_log_category_group_id,
                 color: category.color,
-                is_billable: category.is_billable,
                 sort_order: category.sort_order,
                 is_active: !category.is_active,
             },
@@ -266,9 +262,42 @@ export default function WorkLogCategoriesSettings({
                                     key={group.id}
                                     className="flex items-center justify-between px-6 py-3"
                                 >
-                                    <span className="text-sm">
-                                        {group.name}
-                                    </span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm">
+                                            {group.name}
+                                        </span>
+                                        {/* 工数フラグ：クリックでトグル */}
+                                        <button
+                                            onClick={() =>
+                                                router.patch(
+                                                    workLogCategoryGroupRoutes.update(
+                                                        {
+                                                            workLogCategoryGroup:
+                                                                group.id,
+                                                        },
+                                                    ).url,
+                                                    {
+                                                        name: group.name,
+                                                        sort_order:
+                                                            group.sort_order,
+                                                        is_billable:
+                                                            !group.is_billable,
+                                                    },
+                                                    { preserveScroll: true },
+                                                )
+                                            }
+                                            className={`rounded-full px-2 py-0.5 text-xs ${
+                                                group.is_billable
+                                                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                                            }`}
+                                            title="クリックで切り替え"
+                                        >
+                                            {group.is_billable
+                                                ? '工数あり'
+                                                : '工数なし'}
+                                        </button>
+                                    </div>
                                     <div className="flex items-center gap-1">
                                         <button
                                             onClick={() =>
@@ -337,6 +366,31 @@ export default function WorkLogCategoriesSettings({
                                             {addGroupForm.errors.name}
                                         </p>
                                     )}
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs text-muted-foreground">
+                                        工数
+                                    </label>
+                                    <label className="flex items-center gap-2 py-1.5">
+                                        <input
+                                            type="checkbox"
+                                            checked={
+                                                addGroupForm.data.is_billable
+                                            }
+                                            onChange={(e) =>
+                                                addGroupForm.setData(
+                                                    'is_billable',
+                                                    e.target.checked,
+                                                )
+                                            }
+                                            className="h-4 w-4 rounded border-input"
+                                        />
+                                        <span className="text-sm">
+                                            {addGroupForm.data.is_billable
+                                                ? '工数あり'
+                                                : '工数なし'}
+                                        </span>
+                                    </label>
                                 </div>
                                 <button
                                     type="submit"
@@ -462,37 +516,6 @@ export default function WorkLogCategoriesSettings({
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-col gap-1">
-                                                    <label className="text-xs text-muted-foreground">
-                                                        工数に含める
-                                                    </label>
-                                                    <label className="flex items-center gap-2 py-1.5">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={
-                                                                editValues.is_billable
-                                                            }
-                                                            onChange={(e) =>
-                                                                setEditValues(
-                                                                    (v) => ({
-                                                                        ...v,
-                                                                        is_billable:
-                                                                            e
-                                                                                .target
-                                                                                .checked,
-                                                                    }),
-                                                                )
-                                                            }
-                                                            className="h-4 w-4 rounded border-input"
-                                                        />
-                                                        <span className="text-sm">
-                                                            {editValues.is_billable
-                                                                ? 'あり'
-                                                                : 'なし'}
-                                                        </span>
-                                                    </label>
-                                                </div>
-
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         type="button"
@@ -550,7 +573,11 @@ export default function WorkLogCategoriesSettings({
                                                     </span>
                                                 )}
                                             </div>
-                                            {!category.is_billable && (
+                                            {groups.find(
+                                                (g) =>
+                                                    g.id ===
+                                                    category.work_log_category_group_id,
+                                            )?.is_billable === false && (
                                                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                                                     工数管理外
                                                 </span>
@@ -713,30 +740,6 @@ export default function WorkLogCategoriesSettings({
                                         />
                                     ))}
                                 </div>
-                            </div>
-
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs text-muted-foreground">
-                                    工数に含める
-                                </label>
-                                <label className="flex items-center gap-2 py-1.5">
-                                    <input
-                                        type="checkbox"
-                                        checked={addForm.data.is_billable}
-                                        onChange={(e) =>
-                                            addForm.setData(
-                                                'is_billable',
-                                                e.target.checked,
-                                            )
-                                        }
-                                        className="h-4 w-4 rounded border-input"
-                                    />
-                                    <span className="text-sm">
-                                        {addForm.data.is_billable
-                                            ? 'あり'
-                                            : 'なし'}
-                                    </span>
-                                </label>
                             </div>
 
                             <button

@@ -16,17 +16,23 @@ class WorkLogCategory extends Model
         'label',
         'work_log_category_group_id',
         'color',
-        'is_billable',
         'is_default',
         'sort_order',
         'is_active',
     ];
 
     protected $casts = [
-        'is_billable' => 'boolean',
         'is_default' => 'boolean',
         'is_active' => 'boolean',
     ];
+
+    /** グループの is_billable を継承する（グループなしはデフォルトで工数あり）。 */
+    protected $appends = ['is_billable'];
+
+    public function getIsBillableAttribute(): bool
+    {
+        return $this->group?->is_billable ?? true;
+    }
 
     /**
      * この種別が属するグループを返す。

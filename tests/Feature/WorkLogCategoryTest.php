@@ -31,7 +31,6 @@ test('実績種別を新規作成できる', function () {
             'label' => '社内研修',
             'work_log_category_group_id' => $group->id,
             'color' => '#10b981',
-            'is_billable' => false,
             'sort_order' => 10,
         ])
         ->assertRedirect();
@@ -40,7 +39,6 @@ test('実績種別を新規作成できる', function () {
         'label' => '社内研修',
         'work_log_category_group_id' => $group->id,
         'color' => '#10b981',
-        'is_billable' => false,
     ]);
 });
 
@@ -52,7 +50,6 @@ test('グループ未指定でも実績種別を新規作成できる', function
             'label' => 'テスト種別',
             'work_log_category_group_id' => null,
             'color' => '#3b82f6',
-            'is_billable' => true,
         ]);
 
     $category = WorkLogCategory::where('label', 'テスト種別')->first();
@@ -68,7 +65,6 @@ test('新規作成時に value が自動生成される', function () {
             'label' => 'テスト種別',
             'work_log_category_group_id' => null,
             'color' => '#3b82f6',
-            'is_billable' => true,
         ]);
 
     $category = WorkLogCategory::where('label', 'テスト種別')->first();
@@ -89,7 +85,6 @@ test('実績種別を更新できる', function () {
             'label' => '新ラベル',
             'work_log_category_group_id' => $group->id,
             'color' => '#3b82f6',
-            'is_billable' => true,
             'sort_order' => 5,
             'is_active' => false,
         ])

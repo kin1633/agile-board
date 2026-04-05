@@ -22,7 +22,6 @@ class WorkLogCategoryFactory extends Factory
             'label' => $this->faker->word(),
             'work_log_category_group_id' => null,
             'color' => '#3b82f6',
-            'is_billable' => true,
             'is_default' => false,
             'sort_order' => $this->faker->numberBetween(10, 99),
             'is_active' => true,
