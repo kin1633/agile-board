@@ -24,7 +24,7 @@ use Illuminate\Http\Client\PendingRequest;
  * - sprints.start_date（既存レコードのみ）
  * - sprints.working_days（既存レコードのみ）
  *
- * github_project_number が設定されている場合のみ ProjectV2 の Iteration をスプリントとして同期する。
+ * github_project_number が未設定のリポジトリはスプリント同期をスキップする。
  * マイルストーンは GitHub と一切同期せず、アプリ独自管理とする。
  */
 class GitHubSyncService
@@ -81,7 +81,7 @@ class GitHubSyncService
     /**
      * 指定リポジトリのラベル・スプリント・Issue を同期する。
      *
-     * github_project_number が設定されている場合のみ Iteration 同期を実行する。
+     * github_project_number が未設定の場合はスプリント同期をスキップする。
      * マイルストーンは GitHub から同期しない（アプリ独自管理）。
      */
     private function syncRepository(Repository $repository, string $githubToken): void

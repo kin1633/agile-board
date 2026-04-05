@@ -4,9 +4,7 @@ use App\Http\Controllers\Settings\GeneralController;
 use App\Http\Controllers\Settings\HolidayController;
 use App\Http\Controllers\Settings\LabelController;
 use App\Http\Controllers\Settings\MemberController;
-use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\RepositoryController;
-use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\WorkLogCategoryController;
 use App\Http\Controllers\Settings\WorkLogCategoryGroupController;
 use Illuminate\Support\Facades\Route;
@@ -49,18 +47,4 @@ Route::middleware(['auth'])->group(function () {
     Route::post('settings/work-log-category-groups', [WorkLogCategoryGroupController::class, 'store'])->name('settings.work-log-category-groups.store');
     Route::patch('settings/work-log-category-groups/{workLogCategoryGroup}', [WorkLogCategoryGroupController::class, 'update'])->name('settings.work-log-category-groups.update');
     Route::delete('settings/work-log-category-groups/{workLogCategoryGroup}', [WorkLogCategoryGroupController::class, 'destroy'])->name('settings.work-log-category-groups.destroy');
-
-    Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
-});
-
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-
-    Route::get('settings/security', [SecurityController::class, 'edit'])->name('security.edit');
-
-    Route::put('settings/password', [SecurityController::class, 'update'])
-        ->middleware('throttle:6,1')
-        ->name('user-password.update');
-
 });

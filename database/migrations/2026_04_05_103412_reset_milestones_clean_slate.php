@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -14,7 +15,10 @@ return new class extends Migration
     public function up(): void
     {
         DB::table('sprints')->update(['milestone_id' => null]);
+        // TRUNCATE は FK 制約があると失敗するため、Schema ヘルパーで一時的に無効化する（MySQL/SQLite 両対応）
+        Schema::disableForeignKeyConstraints();
         DB::table('milestones')->truncate();
+        Schema::enableForeignKeyConstraints();
     }
 
     public function down(): void
