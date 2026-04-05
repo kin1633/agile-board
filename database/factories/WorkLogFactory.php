@@ -17,13 +17,25 @@ class WorkLogFactory extends Factory
      */
     public function definition(): array
     {
+        // start_time は 7〜19時の15分単位でランダム生成し、end_time は1〜3時間後に設定する
+        $startHour = fake()->numberBetween(7, 17);
+        $startMinute = fake()->randomElement([0, 15, 30, 45]);
+        $durationMinutes = fake()->randomElement([60, 90, 120, 150, 180]);
+
+        $startTime = sprintf('%02d:%02d', $startHour, $startMinute);
+        $endTotal = $startHour * 60 + $startMinute + $durationMinutes;
+        $endTime = sprintf('%02d:%02d', intdiv($endTotal, 60), $endTotal % 60);
+        $hours = $durationMinutes / 60;
+
         return [
             'date' => fake()->dateTimeBetween('-30 days', 'now')->format('Y-m-d'),
+            'start_time' => $startTime,
+            'end_time' => $endTime,
             'member_id' => null,
             'epic_id' => null,
             'issue_id' => null,
             'category' => null, // null=開発作業
-            'hours' => fake()->randomElement([0.5, 1.0, 1.5, 2.0, 2.5, 3.0]),
+            'hours' => $hours,
             'note' => null,
         ];
     }

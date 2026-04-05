@@ -1,7 +1,23 @@
-import { useState } from 'react';
+import React from 'react';
+import FullCalendar from '@fullcalendar/react';
+import timeGridPlugin from '@fullcalendar/timegrid';
+import interactionPlugin, {
+    type DateSelectArg,
+    type EventResizeDoneArg,
+} from '@fullcalendar/interaction';
+import type {
+    EventClickArg,
+    EventDropArg,
+    EventInput,
+} from '@fullcalendar/core';
 import { Head, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { index as workLogsIndex, store, update, destroy } from '@/routes/work-logs';
+import {
+    index as workLogsIndex,
+    store,
+    update,
+    destroy,
+} from '@/routes/work-logs';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -22,6 +38,18 @@ const CATEGORY_OPTIONS = [
 
 type CategoryValue = (typeof CATEGORY_OPTIONS)[number]['value'];
 
+/** カテゴリごとの色設定（FullCalendar のイベント背景色） */
+const CATEGORY_COLORS: Record<string, string> = {
+    '': '#3b82f6', // 開発作業: blue
+    pm_estimate: '#f97316', // PJ管理工数: orange
+    pm_meeting: '#f97316',
+    pm_other: '#f97316',
+    ops_inquiry: '#8b5cf6', // 保守・運用: violet
+    ops_fix: '#8b5cf6',
+    ops_incident: '#ef4444', // 障害対応: red
+    ops_other: '#8b5cf6',
+};
+
 function categoryLabel(value: string | null): string {
     if (!value) {
         return '開発作業';
@@ -29,16 +57,36 @@ function categoryLabel(value: string | null): string {
     return CATEGORY_OPTIONS.find((c) => c.value === value)?.label ?? value;
 }
 
-function categoryGroup(value: string | null): string | null {
-    if (!value) {
-        return null;
+/** カテゴリ値から種別グループを判定する */
+function kindOf(category: CategoryValue): 'dev' | 'pm' | 'ops' {
+    if (!category) {
+        return 'dev';
     }
-    return CATEGORY_OPTIONS.find((c) => c.value === value)?.group ?? null;
+    if (category.startsWith('pm_')) {
+        return 'pm';
+    }
+    return 'ops';
+}
+
+/** YYYY-MM-DD の日付を1日ずらす */
+function shiftDate(dateStr: string, days: number): string {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+}
+
+/** Date オブジェクトから HH:mm 文字列を生成する */
+function toHHMM(date: Date): string {
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
 }
 
 interface WorkLogRow {
     id: number;
     date: string;
+    start_time: string | null;
+    end_time: string | null;
     member_id: number | null;
     member_name: string | null;
     epic_id: number | null;
@@ -88,32 +136,26 @@ interface Props {
 
 interface FormData {
     date: string;
+    start_time: string;
+    end_time: string;
     member_id: string;
     epic_id: string;
     /** 開発作業時のストーリーID */
     story_id: string;
     issue_id: string;
     category: CategoryValue;
-    hours: string;
     note: string;
 }
 
-/** カテゴリ値から種別グループを判定する */
-function kindOf(category: CategoryValue): 'dev' | 'pm' | 'ops' {
-    if (!category) {
-        return 'dev';
+/** ログの表示タイトルを生成する */
+function logTitle(log: WorkLogRow): string {
+    if (log.category) {
+        return categoryLabel(log.category);
     }
-    if (category.startsWith('pm_')) {
-        return 'pm';
+    if (log.issue_title) {
+        return log.issue_title;
     }
-    return 'ops';
-}
-
-/** YYYY-MM-DD の日付を1日ずらす */
-function shiftDate(dateStr: string, days: number): string {
-    const d = new Date(dateStr);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
+    return '開発作業';
 }
 
 export default function WorkLogsIndex({
@@ -125,18 +167,19 @@ export default function WorkLogsIndex({
     currentMemberId,
     filters,
 }: Props) {
-    const [showModal, setShowModal] = useState(false);
-    const [editingLog, setEditingLog] = useState<WorkLogRow | null>(null);
+    const [showModal, setShowModal] = React.useState(false);
+    const [editingLog, setEditingLog] = React.useState<WorkLogRow | null>(null);
 
     const { data, setData, post, put, processing, errors, reset } =
         useForm<FormData>({
             date: filters.date,
+            start_time: '',
+            end_time: '',
             member_id: currentMemberId?.toString() ?? '',
             epic_id: '',
             story_id: '',
             issue_id: '',
             category: '',
-            hours: '',
             note: '',
         });
 
@@ -151,16 +194,17 @@ export default function WorkLogsIndex({
         );
     };
 
-    const openCreate = () => {
+    const openCreate = (startTime = '', endTime = '') => {
         reset();
         setData({
             date: filters.date,
+            start_time: startTime,
+            end_time: endTime,
             member_id: currentMemberId?.toString() ?? '',
             epic_id: '',
             story_id: '',
             issue_id: '',
             category: '',
-            hours: '',
             note: '',
         });
         setEditingLog(null);
@@ -170,16 +214,77 @@ export default function WorkLogsIndex({
     const openEdit = (log: WorkLogRow) => {
         setData({
             date: log.date,
+            start_time: log.start_time?.slice(0, 5) ?? '',
+            end_time: log.end_time?.slice(0, 5) ?? '',
             member_id: log.member_id?.toString() ?? '',
             epic_id: log.epic_id?.toString() ?? '',
             story_id: '',
             issue_id: log.issue_id?.toString() ?? '',
             category: (log.category ?? '') as CategoryValue,
-            hours: log.hours.toString(),
             note: log.note ?? '',
         });
         setEditingLog(log);
         setShowModal(true);
+    };
+
+    /** ドラッグ選択完了時: モーダルを開いて start/end time を自動セット */
+    const handleSelect = (selectInfo: DateSelectArg) => {
+        openCreate(toHHMM(selectInfo.start), toHHMM(selectInfo.end));
+    };
+
+    /** イベントクリック時: 編集モーダルを開く */
+    const handleEventClick = (clickInfo: EventClickArg) => {
+        const log = clickInfo.event.extendedProps.log as WorkLogRow;
+        openEdit(log);
+    };
+
+    /**
+     * イベントのリサイズ完了時: start/end を更新してバックエンドに送信する。
+     * FullCalendar は楽観的に DOM を更新済みなので、失敗時は revert() を呼ぶ。
+     */
+    const handleEventResize = (resizeInfo: EventResizeDoneArg) => {
+        const log = resizeInfo.event.extendedProps.log as WorkLogRow;
+        router.put(
+            update({ workLog: log.id }).url,
+            {
+                date: log.date,
+                start_time: toHHMM(resizeInfo.event.start!),
+                end_time: toHHMM(resizeInfo.event.end!),
+                member_id: log.member_id,
+                epic_id: log.epic_id,
+                issue_id: log.issue_id,
+                category: log.category,
+                note: log.note,
+            },
+            {
+                preserveScroll: true,
+                onError: () => resizeInfo.revert(),
+            },
+        );
+    };
+
+    /**
+     * イベントのドラッグ移動完了時: start/end を更新してバックエンドに送信する。
+     */
+    const handleEventDrop = (dropInfo: EventDropArg) => {
+        const log = dropInfo.event.extendedProps.log as WorkLogRow;
+        router.put(
+            update({ workLog: log.id }).url,
+            {
+                date: dropInfo.event.start!.toISOString().slice(0, 10),
+                start_time: toHHMM(dropInfo.event.start!),
+                end_time: toHHMM(dropInfo.event.end!),
+                member_id: log.member_id,
+                epic_id: log.epic_id,
+                issue_id: log.issue_id,
+                category: log.category,
+                note: log.note,
+            },
+            {
+                preserveScroll: true,
+                onError: () => dropInfo.revert(),
+            },
+        );
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -189,8 +294,7 @@ export default function WorkLogsIndex({
         const payload = {
             ...data,
             epic_id: data.epic_id || null,
-            issue_id:
-                kind === 'dev' ? (data.issue_id || null) : null,
+            issue_id: kind === 'dev' ? data.issue_id || null : null,
             category: kind === 'dev' ? null : data.category,
         };
 
@@ -234,194 +338,139 @@ export default function WorkLogsIndex({
         ? stories.filter((s) => s.epic_id === Number(data.epic_id))
         : stories;
 
+    /** WorkLogRow を FullCalendar の EventInput に変換する */
+    const calendarEvents: EventInput[] = logs
+        .filter((l) => l.start_time && l.end_time)
+        .map((log) => ({
+            id: String(log.id),
+            title: logTitle(log),
+            start: `${filters.date}T${log.start_time}`,
+            end: `${filters.date}T${log.end_time}`,
+            backgroundColor: CATEGORY_COLORS[log.category ?? ''] ?? '#3b82f6',
+            borderColor: 'transparent',
+            extendedProps: { log },
+        }));
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="実績入力" />
-            <div className="flex flex-col gap-6 p-6">
-                {/* ヘッダー */}
+            <div className="flex flex-col gap-4 p-6">
+                {/* ヘッダー: 日付ナビ + メンバー + 合計 */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h1 className="text-xl font-semibold">実績入力（ワークログ）</h1>
-                    <button
-                        onClick={openCreate}
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                    >
-                        + ログ追加
-                    </button>
-                </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* 日付ナビゲーション */}
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() =>
+                                    applyFilter(
+                                        shiftDate(filters.date, -1),
+                                        filters.member_id?.toString() ?? '',
+                                    )
+                                }
+                                className="rounded border border-sidebar-border/70 px-2 py-1 text-sm hover:bg-muted/50"
+                                aria-label="前日"
+                            >
+                                ◀
+                            </button>
+                            <input
+                                type="date"
+                                value={filters.date}
+                                onChange={(e) =>
+                                    applyFilter(
+                                        e.target.value,
+                                        filters.member_id?.toString() ?? '',
+                                    )
+                                }
+                                className="rounded border border-sidebar-border/70 bg-background px-2 py-1 text-sm"
+                            />
+                            <button
+                                onClick={() =>
+                                    applyFilter(
+                                        shiftDate(filters.date, 1),
+                                        filters.member_id?.toString() ?? '',
+                                    )
+                                }
+                                className="rounded border border-sidebar-border/70 px-2 py-1 text-sm hover:bg-muted/50"
+                                aria-label="翌日"
+                            >
+                                ▶
+                            </button>
+                        </div>
 
-                {/* フィルタバー: 日付ナビゲーション + メンバー選択 */}
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-1">
-                        <button
-                            onClick={() =>
-                                applyFilter(
-                                    shiftDate(filters.date, -1),
-                                    filters.member_id?.toString() ?? '',
-                                )
-                            }
-                            className="rounded border border-sidebar-border/70 px-2 py-1 text-sm hover:bg-muted/50"
-                            aria-label="前日"
-                        >
-                            ◀
-                        </button>
-                        <input
-                            type="date"
-                            value={filters.date}
+                        {/* メンバー選択 */}
+                        <select
+                            value={filters.member_id?.toString() ?? ''}
                             onChange={(e) =>
-                                applyFilter(
-                                    e.target.value,
-                                    filters.member_id?.toString() ?? '',
-                                )
+                                applyFilter(filters.date, e.target.value)
                             }
-                            className="rounded border border-sidebar-border/70 bg-background px-2 py-1 text-sm"
-                        />
-                        <button
-                            onClick={() =>
-                                applyFilter(
-                                    shiftDate(filters.date, 1),
-                                    filters.member_id?.toString() ?? '',
-                                )
-                            }
-                            className="rounded border border-sidebar-border/70 px-2 py-1 text-sm hover:bg-muted/50"
-                            aria-label="翌日"
+                            className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-1.5 text-sm"
                         >
-                            ▶
+                            <option value="">全メンバー</option>
+                            {members.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                    {m.display_name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">
+                            合計:{' '}
+                            <span className="font-semibold text-foreground">
+                                {totalHours}h
+                            </span>
+                        </span>
+                        <button
+                            onClick={() => openCreate()}
+                            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                        >
+                            + ログ追加
                         </button>
                     </div>
-
-                    <select
-                        value={filters.member_id?.toString() ?? ''}
-                        onChange={(e) =>
-                            applyFilter(filters.date, e.target.value)
-                        }
-                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-1.5 text-sm"
-                    >
-                        <option value="">全メンバー</option>
-                        {members.map((m) => (
-                            <option key={m.id} value={m.id}>
-                                {m.display_name}
-                            </option>
-                        ))}
-                    </select>
                 </div>
 
-                {/* ログ一覧 */}
-                {logs.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                        この日の実績がありません。「ログ追加」から記録してください。
-                    </p>
-                ) : (
-                    <div className="rounded-xl border border-sidebar-border/70 bg-card">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-sidebar-border/50 text-xs text-muted-foreground">
-                                    <th className="px-4 py-2 text-left font-medium">
-                                        種別
-                                    </th>
-                                    <th className="px-4 py-2 text-left font-medium">
-                                        エピック
-                                    </th>
-                                    <th className="px-4 py-2 text-left font-medium">
-                                        ストーリー / タスク / カテゴリ
-                                    </th>
-                                    <th className="px-4 py-2 text-right font-medium">
-                                        時間
-                                    </th>
-                                    <th className="px-4 py-2 text-left font-medium">
-                                        メモ
-                                    </th>
-                                    <th className="px-4 py-2 text-left font-medium">
-                                        担当
-                                    </th>
-                                    <th className="px-4 py-2" />
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-sidebar-border/30">
-                                {logs.map((log) => {
-                                    const group = categoryGroup(log.category);
-                                    return (
-                                        <tr key={log.id} className="hover:bg-muted/20">
-                                            <td className="px-4 py-2">
-                                                {group ? (
-                                                    <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
-                                                        {group}
-                                                    </span>
-                                                ) : (
-                                                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
-                                                        開発作業
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-2 text-xs text-muted-foreground">
-                                                {log.epic_title ?? '—'}
-                                            </td>
-                                            <td className="px-4 py-2 text-xs">
-                                                {log.category ? (
-                                                    categoryLabel(log.category)
-                                                ) : log.issue_title ? (
-                                                    <span>
-                                                        {log.issue_parent_title && (
-                                                            <span className="text-muted-foreground">
-                                                                {log.issue_parent_title}{' '}
-                                                                &rsaquo;{' '}
-                                                            </span>
-                                                        )}
-                                                        {log.issue_title}
-                                                    </span>
-                                                ) : (
-                                                    '—'
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-2 text-right font-medium tabular-nums">
-                                                {log.hours}h
-                                            </td>
-                                            <td className="px-4 py-2 text-xs text-muted-foreground">
-                                                {log.note ?? ''}
-                                            </td>
-                                            <td className="px-4 py-2 text-xs text-muted-foreground">
-                                                {log.member_name ?? '—'}
-                                            </td>
-                                            <td className="px-4 py-2">
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={() =>
-                                                            openEdit(log)
-                                                        }
-                                                        className="rounded px-2 py-1 text-xs hover:bg-muted/50"
-                                                    >
-                                                        編集
-                                                    </button>
-                                                    <button
-                                                        onClick={() =>
-                                                            handleDelete(log)
-                                                        }
-                                                        className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50"
-                                                    >
-                                                        削除
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                            <tfoot>
-                                <tr className="border-t border-sidebar-border/50 font-semibold">
-                                    <td
-                                        colSpan={3}
-                                        className="px-4 py-2 text-xs text-muted-foreground"
-                                    >
-                                        合計
-                                    </td>
-                                    <td className="px-4 py-2 text-right tabular-nums">
-                                        {totalHours}h
-                                    </td>
-                                    <td colSpan={3} />
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                )}
+                {/* タイムラインカレンダー */}
+                <div className="rounded-xl border border-sidebar-border/70 bg-card p-2">
+                    <FullCalendar
+                        plugins={[timeGridPlugin, interactionPlugin]}
+                        initialView="timeGridDay"
+                        initialDate={filters.date}
+                        headerToolbar={false}
+                        selectable={true}
+                        selectMirror={true}
+                        editable={true}
+                        slotMinTime="07:00:00"
+                        slotMaxTime="22:00:00"
+                        slotDuration="00:15:00"
+                        slotLabelInterval="01:00:00"
+                        allDaySlot={false}
+                        nowIndicator={true}
+                        events={calendarEvents}
+                        select={handleSelect}
+                        eventClick={handleEventClick}
+                        eventResize={handleEventResize}
+                        eventDrop={handleEventDrop}
+                        height="auto"
+                        locale="ja"
+                        eventTimeFormat={{
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false,
+                        }}
+                        slotLabelFormat={{
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false,
+                        }}
+                    />
+                </div>
+
+                {/* 操作ヒント */}
+                <p className="text-xs text-muted-foreground">
+                    時間軸をドラッグして時間範囲を選択するか、「+
+                    ログ追加」から記録できます。イベントはドラッグ移動・リサイズで時間を変更できます。
+                </p>
             </div>
 
             {/* 追加・編集モーダル */}
@@ -452,6 +501,49 @@ export default function WorkLogsIndex({
                                 {errors.date && (
                                     <p className="mt-1 text-xs text-red-500">
                                         {errors.date}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* 時間範囲 */}
+                            <div>
+                                <label className="mb-1 block text-xs font-medium">
+                                    時間
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="time"
+                                        value={data.start_time}
+                                        onChange={(e) =>
+                                            setData(
+                                                'start_time',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                        required
+                                    />
+                                    <span className="text-sm text-muted-foreground">
+                                        〜
+                                    </span>
+                                    <input
+                                        type="time"
+                                        value={data.end_time}
+                                        onChange={(e) =>
+                                            setData('end_time', e.target.value)
+                                        }
+                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                        required
+                                    />
+                                </div>
+                                {errors.start_time && (
+                                    <p className="mt-1 text-xs text-red-500">
+                                        {errors.start_time}
+                                    </p>
+                                )}
+                                {errors.end_time && (
+                                    <p className="mt-1 text-xs text-red-500">
+                                        {errors.end_time}
                                     </p>
                                 )}
                             </div>
@@ -538,7 +630,10 @@ export default function WorkLogsIndex({
                                         <select
                                             value={data.epic_id}
                                             onChange={(e) => {
-                                                setData('epic_id', e.target.value);
+                                                setData(
+                                                    'epic_id',
+                                                    e.target.value,
+                                                );
                                                 setData('story_id', '');
                                                 setData('issue_id', '');
                                             }}
@@ -562,7 +657,10 @@ export default function WorkLogsIndex({
                                         <select
                                             value={data.story_id}
                                             onChange={(e) => {
-                                                setData('story_id', e.target.value);
+                                                setData(
+                                                    'story_id',
+                                                    e.target.value,
+                                                );
                                                 setData('issue_id', '');
                                             }}
                                             className="w-full rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
@@ -583,7 +681,10 @@ export default function WorkLogsIndex({
                                         <select
                                             value={data.issue_id}
                                             onChange={(e) =>
-                                                setData('issue_id', e.target.value)
+                                                setData(
+                                                    'issue_id',
+                                                    e.target.value,
+                                                )
                                             }
                                             className="w-full rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
                                         >
@@ -619,43 +720,16 @@ export default function WorkLogsIndex({
                                     >
                                         <option value="">未選択</option>
                                         {epics.map((epic) => (
-                                            <option key={epic.id} value={epic.id}>
+                                            <option
+                                                key={epic.id}
+                                                value={epic.id}
+                                            >
                                                 {epic.title}
                                             </option>
                                         ))}
                                     </select>
                                 </div>
                             )}
-
-                            {/* 時間 */}
-                            <div>
-                                <label className="mb-1 block text-xs font-medium">
-                                    時間
-                                </label>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="number"
-                                        min="0.25"
-                                        max="24"
-                                        step="0.25"
-                                        value={data.hours}
-                                        onChange={(e) =>
-                                            setData('hours', e.target.value)
-                                        }
-                                        className="w-28 rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
-                                        placeholder="例: 2.5"
-                                        required
-                                    />
-                                    <span className="text-sm text-muted-foreground">
-                                        h
-                                    </span>
-                                </div>
-                                {errors.hours && (
-                                    <p className="mt-1 text-xs text-red-500">
-                                        {errors.hours}
-                                    </p>
-                                )}
-                            </div>
 
                             {/* メモ */}
                             <div>
@@ -687,10 +761,19 @@ export default function WorkLogsIndex({
                                 >
                                     {editingLog ? '更新' : '追加'}
                                 </button>
+                                {editingLog && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDelete(editingLog)}
+                                        className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-500 hover:bg-red-50"
+                                    >
+                                        削除
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
-                                    className="rounded-lg border border-sidebar-border/70 px-4 py-2 text-sm hover:bg-muted/50"
+                                    className="ml-auto rounded-lg border border-sidebar-border/70 px-4 py-2 text-sm hover:bg-muted/50"
                                 >
                                     キャンセル
                                 </button>

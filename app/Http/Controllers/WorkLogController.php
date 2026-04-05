@@ -8,6 +8,7 @@ use App\Models\Member;
 use App\Models\WorkLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,9 +31,11 @@ class WorkLogController extends Controller
             $query->where('member_id', $memberId);
         }
 
-        $logs = $query->orderBy('id')->get()->map(fn (WorkLog $log) => [
+        $logs = $query->orderBy('start_time')->get()->map(fn (WorkLog $log) => [
             'id' => $log->id,
             'date' => $log->date->toDateString(),
+            'start_time' => $log->start_time,
+            'end_time' => $log->end_time,
             'member_id' => $log->member_id,
             'member_name' => $log->member?->display_name,
             'epic_id' => $log->epic_id,
@@ -79,6 +82,7 @@ class WorkLogController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate($this->rules());
+        $validated = $this->computeHours($validated);
 
         WorkLog::create($validated);
 
@@ -91,6 +95,7 @@ class WorkLogController extends Controller
     public function update(Request $request, WorkLog $workLog): RedirectResponse
     {
         $validated = $request->validate($this->rules());
+        $validated = $this->computeHours($validated);
 
         $workLog->update($validated);
 
@@ -109,6 +114,7 @@ class WorkLogController extends Controller
 
     /**
      * store/update 共通のバリデーションルール。
+     * hours は start_time/end_time から自動計算するため受け付けない。
      *
      * @return array<string, mixed[]>
      */
@@ -116,13 +122,31 @@ class WorkLogController extends Controller
     {
         return [
             'date' => ['required', 'date'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
             'member_id' => ['nullable', 'integer', 'exists:members,id'],
             'epic_id' => ['nullable', 'integer', 'exists:epics,id'],
             'issue_id' => ['nullable', 'integer', 'exists:issues,id'],
             // null=開発作業, pm_estimate/pm_meeting/pm_other, ops_inquiry/ops_fix/ops_incident/ops_other
             'category' => ['nullable', 'string', 'in:pm_estimate,pm_meeting,pm_other,ops_inquiry,ops_fix,ops_incident,ops_other'],
-            'hours' => ['required', 'numeric', 'min:0.25', 'max:24'],
             'note' => ['nullable', 'string', 'max:500'],
         ];
+    }
+
+    /**
+     * start_time/end_time の差分から hours を 15分単位（0.25h）で算出して返す。
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function computeHours(array $validated): array
+    {
+        $start = Carbon::createFromFormat('H:i', $validated['start_time']);
+        $end = Carbon::createFromFormat('H:i', $validated['end_time']);
+
+        // 15分単位に切り捨てて decimal hour に変換する
+        $validated['hours'] = floor($start->diffInMinutes($end) / 15) * 0.25;
+
+        return $validated;
     }
 }
