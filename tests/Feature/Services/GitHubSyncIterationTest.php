@@ -159,6 +159,87 @@ test('既存スプリントの start_date と working_days は上書きされな
     expect($existingSprint->working_days)->toBe(3);
 });
 
+test('スプリントの start_date が含まれるマイルストーンに自動紐付けされる', function () {
+    $repo = Repository::factory()->create([
+        'owner' => 'myorg',
+        'name' => 'myrepo',
+        'active' => true,
+        'github_project_number' => 5,
+    ]);
+
+    // 4月マイルストーン: 第1月曜=4/6, due=5/3（iterationGraphQLData の startDate=2026-04-07 を含む）
+    $milestone = Milestone::factory()->create([
+        'year' => 2026,
+        'month' => 4,
+        'started_at' => '2026-04-06',
+        'due_date' => '2026-05-03',
+    ]);
+
+    Http::fake([
+        'api.github.com/repos/myorg/myrepo/labels*' => Http::response(emptyLabelsResponse()),
+    ]);
+
+    $this->mock(GitHubGraphQLClient::class, function ($mock) {
+        $mock->shouldReceive('fetchProjectIterationsWithItems')
+            ->once()
+            ->andReturn(iterationGraphQLData());
+        $mock->shouldReceive('fetchIssueNodeId')->andReturn(null);
+    });
+
+    app(GitHubSyncService::class)->syncAll('test-token');
+
+    $sprint = Sprint::where('github_iteration_id', 'iter-abc')->first();
+    // start_date=2026-04-07 は 4月マイルストーンの期間内に含まれるため自動紐付けされる
+    expect($sprint->milestone_id)->toBe($milestone->id);
+});
+
+test('既に milestone_id が設定済みのスプリントは同期後も上書きされない', function () {
+    $repo = Repository::factory()->create([
+        'owner' => 'myorg',
+        'name' => 'myrepo',
+        'active' => true,
+        'github_project_number' => 5,
+    ]);
+
+    // 4月マイルストーンと別マイルストーン（手動割当済み）
+    $aprilMilestone = Milestone::factory()->create([
+        'year' => 2026,
+        'month' => 4,
+        'started_at' => '2026-04-06',
+        'due_date' => '2026-05-03',
+    ]);
+    $manualMilestone = Milestone::factory()->create([
+        'year' => 2026,
+        'month' => 3,
+        'started_at' => '2026-03-02',
+        'due_date' => '2026-04-05',
+    ]);
+
+    // 既存スプリントに手動で別マイルストーンが割り当て済み
+    $existingSprint = Sprint::factory()->create([
+        'github_iteration_id' => 'iter-abc',
+        'start_date' => '2026-04-07',
+        'milestone_id' => $manualMilestone->id,
+    ]);
+
+    Http::fake([
+        'api.github.com/repos/myorg/myrepo/labels*' => Http::response(emptyLabelsResponse()),
+    ]);
+
+    $this->mock(GitHubGraphQLClient::class, function ($mock) {
+        $mock->shouldReceive('fetchProjectIterationsWithItems')
+            ->once()
+            ->andReturn(iterationGraphQLData());
+        $mock->shouldReceive('fetchIssueNodeId')->andReturn(null);
+    });
+
+    app(GitHubSyncService::class)->syncAll('test-token');
+
+    $existingSprint->refresh();
+    // 手動割当が保護され、4月マイルストーンに上書きされない
+    expect($existingSprint->milestone_id)->toBe($manualMilestone->id);
+});
+
 test('Iteration モードでは REST マイルストーン API を呼ばない', function () {
     Repository::factory()->create([
         'owner' => 'myorg',

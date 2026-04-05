@@ -69,4 +69,10 @@ class Issue extends Model
     {
         return $this->belongsToMany(Label::class, 'issue_labels');
     }
+
+    /** 日次実績ログ（ワークログ） */
+    public function workLogs(): HasMany
+    {
+        return $this->hasMany(WorkLog::class);
+    }
 }

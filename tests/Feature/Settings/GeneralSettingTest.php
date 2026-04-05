@@ -25,7 +25,11 @@ test('hours_per_person_day を更新できる', function () {
     $user = User::factory()->create();
 
     $this->actingAs($user)
-        ->patch(route('settings.general.update'), ['hours_per_person_day' => 8])
+        ->patch(route('settings.general.update'), [
+            'hours_per_person_day' => 8,
+            'work_start_time' => '09:00',
+            'work_end_time' => '18:00',
+        ])
         ->assertRedirect(route('settings.general'));
 
     expect(Setting::get('hours_per_person_day'))->toBe('8');

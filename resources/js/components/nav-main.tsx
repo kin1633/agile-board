@@ -27,36 +27,42 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
         <SidebarGroup className="px-2 py-0">
             <SidebarGroupLabel>Platform</SidebarGroupLabel>
             <SidebarMenu>
-                {items.map((item) =>
-                    item.children ? (
-                        /* サブメニューあり: アコーディオン展開 */
-                        <CollapsibleNavItem
-                            key={item.title}
-                            item={item}
-                            isParentActive={
-                                isCurrentOrParentUrl(item.href) ||
-                                (item.children?.some((child) =>
-                                    isCurrentUrl(child.href),
-                                ) ??
-                                    false)
-                            }
-                            isCurrentUrl={isCurrentUrl}
-                        />
-                    ) : (
-                        <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton
-                                asChild
-                                isActive={isCurrentUrl(item.href)}
-                                tooltip={{ children: item.title }}
-                            >
-                                <Link href={item.href} prefetch>
-                                    {item.icon && <item.icon />}
-                                    <span>{item.title}</span>
-                                </Link>
-                            </SidebarMenuButton>
-                        </SidebarMenuItem>
-                    ),
-                )}
+                {items.map((item) => (
+                    <div key={item.title}>
+                        {item.sectionLabel && (
+                            <p className="mx-2 mt-3 mb-1 text-xs font-medium text-muted-foreground/60">
+                                {item.sectionLabel}
+                            </p>
+                        )}
+                        {item.children ? (
+                            /* サブメニューあり: アコーディオン展開 */
+                            <CollapsibleNavItem
+                                item={item}
+                                isParentActive={
+                                    isCurrentOrParentUrl(item.href) ||
+                                    (item.children?.some((child) =>
+                                        isCurrentUrl(child.href),
+                                    ) ??
+                                        false)
+                                }
+                                isCurrentUrl={isCurrentUrl}
+                            />
+                        ) : (
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    asChild
+                                    isActive={isCurrentUrl(item.href)}
+                                    tooltip={{ children: item.title }}
+                                >
+                                    <Link href={item.href} prefetch>
+                                        {item.icon && <item.icon />}
+                                        <span>{item.title}</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        )}
+                    </div>
+                ))}
             </SidebarMenu>
         </SidebarGroup>
     );

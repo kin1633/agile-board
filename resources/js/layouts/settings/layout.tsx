@@ -5,7 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
-import { general, repositories, members, labels } from '@/routes/settings';
+import {
+    general,
+    repositories,
+    members,
+    labels,
+    holidays,
+    workLogCategories,
+} from '@/routes/settings';
 import type { NavItem } from '@/types';
 
 const sidebarNavItems: NavItem[] = [
@@ -27,6 +34,16 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'ラベル',
         href: labels(),
+        icon: null,
+    },
+    {
+        title: '休日設定',
+        href: holidays(),
+        icon: null,
+    },
+    {
+        title: '実績種別',
+        href: workLogCategories(),
         icon: null,
     },
 ];
@@ -75,11 +92,7 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
 
                 <Separator className="my-6 lg:hidden" />
 
-                <div className="flex-1 md:max-w-2xl">
-                    <section className="max-w-xl space-y-12">
-                        {children}
-                    </section>
-                </div>
+                <div className="flex-1">{children}</div>
             </div>
         </div>
     );

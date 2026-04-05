@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Epic;
 use App\Models\Issue;
 use App\Models\Label;
+use App\Models\Milestone;
 use App\Models\Repository;
 use App\Models\Setting;
 use App\Models\Sprint;
@@ -148,18 +149,33 @@ class GitHubSyncService
                 'iteration_duration_days' => $durationDays,
             ]);
 
-            return $existingSprint;
+            $sprint = $existingSprint;
+        } else {
+            $sprint = Sprint::create([
+                'github_iteration_id' => $iteration['id'],
+                'title' => $iteration['title'],
+                'start_date' => $startDate->toDateString(),
+                'end_date' => $endDate->toDateString(),
+                'working_days' => 5,
+                'iteration_duration_days' => $durationDays,
+                'state' => 'open',
+            ]);
         }
 
-        return Sprint::create([
-            'github_iteration_id' => $iteration['id'],
-            'title' => $iteration['title'],
-            'start_date' => $startDate->toDateString(),
-            'end_date' => $endDate->toDateString(),
-            'working_days' => 5,
-            'iteration_duration_days' => $durationDays,
-            'state' => 'open',
-        ]);
+        // milestone_id が未設定の場合のみ自動紐付け（手動割当を尊重）
+        if ($sprint->milestone_id === null) {
+            $milestone = Milestone::whereNotNull('started_at')
+                ->whereNotNull('due_date')
+                ->where('started_at', '<=', $sprint->start_date)
+                ->where('due_date', '>=', $sprint->start_date)
+                ->first();
+
+            if ($milestone) {
+                $sprint->update(['milestone_id' => $milestone->id]);
+            }
+        }
+
+        return $sprint;
     }
 
     /**

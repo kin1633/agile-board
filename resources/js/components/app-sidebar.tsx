@@ -1,11 +1,14 @@
 import { Link } from '@inertiajs/react';
 import {
     BookOpen,
+    Clock,
     ClipboardList,
+    CalendarCheck,
     Flag,
     FolderGit2,
     LayoutGrid,
     Layers,
+    ListChecks,
     Settings,
     RotateCcw,
 } from 'lucide-react';
@@ -26,8 +29,11 @@ import { dashboard } from '@/routes';
 import milestones from '@/routes/milestones';
 import sprints from '@/routes/sprints';
 import epics from '@/routes/epics';
+import issues from '@/routes/issues';
 import retrospectives from '@/routes/retrospectives';
-import { general, repositories, members, labels } from '@/routes/settings';
+import workLogs from '@/routes/work-logs';
+import attendanceRoutes from '@/routes/attendance';
+import { general } from '@/routes/settings';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -37,19 +43,26 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'スプリント',
-        href: sprints.index(),
-        icon: ClipboardList,
+        title: 'エピック（案件）',
+        href: epics.index(),
+        icon: Layers,
+        sectionLabel: '開発',
+    },
+    {
+        title: 'ストーリー・タスク',
+        href: issues.index().url,
+        icon: ListChecks,
     },
     {
         title: 'マイルストーン',
         href: milestones.index().url,
         icon: Flag,
+        sectionLabel: 'スケジュール管理',
     },
     {
-        title: 'エピック（案件）',
-        href: epics.index(),
-        icon: Layers,
+        title: 'スプリント',
+        href: sprints.index(),
+        icon: ClipboardList,
     },
     {
         title: 'レトロスペクティブ',
@@ -57,15 +70,20 @@ const mainNavItems: NavItem[] = [
         icon: RotateCcw,
     },
     {
+        title: '実績入力',
+        href: workLogs.index().url,
+        icon: Clock,
+        sectionLabel: '記録',
+    },
+    {
+        title: '勤怠管理',
+        href: attendanceRoutes.index().url,
+        icon: CalendarCheck,
+    },
+    {
         title: '設定',
         href: general(),
         icon: Settings,
-        children: [
-            { title: '一般', href: general() },
-            { title: 'リポジトリ', href: repositories() },
-            { title: 'メンバー', href: members() },
-            { title: 'ラベル', href: labels() },
-        ],
     },
 ];
 

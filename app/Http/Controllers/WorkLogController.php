@@ -1,0 +1,180 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Epic;
+use App\Models\Holiday;
+use App\Models\Issue;
+use App\Models\Member;
+use App\Models\Setting;
+use App\Models\WorkLog;
+use App\Models\WorkLogCategory;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class WorkLogController extends Controller
+{
+    /**
+     * 実績入力一覧ページ。日付・メンバーでフィルタして表示する。
+     */
+    public function index(Request $request): Response
+    {
+        // week_start が未指定の場合は今週の月曜日をデフォルトとする
+        $weekStart = $request->query('week_start')
+            ? Carbon::parse($request->query('week_start'))->startOfWeek(Carbon::MONDAY)->toDateString()
+            : Carbon::now()->startOfWeek(Carbon::MONDAY)->toDateString();
+        $weekEnd = Carbon::parse($weekStart)->addDays(6)->toDateString();
+        $memberId = $request->query('member_id') !== null ? (int) $request->query('member_id') : null;
+
+        $query = WorkLog::with(['member', 'epic', 'issue.parent'])
+            ->whereBetween('date', [$weekStart, $weekEnd]);
+
+        if ($memberId !== null) {
+            $query->where('member_id', $memberId);
+        }
+
+        $logs = $query->orderBy('date')->orderBy('start_time')->get()->map(fn (WorkLog $log) => [
+            'id' => $log->id,
+            'date' => $log->date->toDateString(),
+            'start_time' => $log->start_time,
+            'end_time' => $log->end_time,
+            'member_id' => $log->member_id,
+            'member_name' => $log->member?->display_name,
+            'epic_id' => $log->epic_id,
+            'epic_title' => $log->epic?->title,
+            'issue_id' => $log->issue_id,
+            'issue_title' => $log->issue?->title,
+            'issue_parent_title' => $log->issue?->parent?->title,
+            'category' => $log->category,
+            'hours' => (float) $log->hours,
+            'note' => $log->note,
+        ]);
+
+        $categories = WorkLogCategory::active()->with('group')->get();
+
+        $epics = Epic::orderBy('title')->get(['id', 'title']);
+
+        // ストーリー（親イシュー）のみをドロップダウン用に取得
+        $stories = Issue::whereNull('parent_issue_id')
+            ->orderBy('title')
+            ->get(['id', 'title', 'epic_id', 'github_issue_number']);
+
+        // タスク（サブイシュー）のみをドロップダウン用に取得
+        $tasks = Issue::whereNotNull('parent_issue_id')
+            ->orderBy('title')
+            ->get(['id', 'title', 'parent_issue_id', 'github_issue_number']);
+
+        $members = Member::orderBy('display_name')->get(['id', 'display_name']);
+
+        // デフォルトのメンバーID: ログインユーザーに紐づくメンバー
+        $currentMemberId = Member::where('user_id', Auth::id())->value('id');
+
+        // 当週の祝日をDBから取得してフロントへ渡す（JAPANESE_HOLIDAYS ハードコードを廃止）
+        $holidays = Holiday::whereBetween('date', [$weekStart, $weekEnd])
+            ->get(['date', 'name'])
+            ->map(fn (Holiday $h) => [
+                'date' => $h->date->toDateString(),
+                'name' => $h->name,
+            ]);
+
+        return Inertia::render('work-logs/index', [
+            'logs' => $logs,
+            'categories' => $categories,
+            'epics' => $epics,
+            'stories' => $stories,
+            'tasks' => $tasks,
+            'members' => $members,
+            'currentMemberId' => $currentMemberId,
+            'filters' => ['week_start' => $weekStart, 'member_id' => $memberId],
+            'holidays' => $holidays,
+            'workSchedule' => [
+                'startTime' => Setting::get('work_start_time', '10:00'),
+                'endTime' => Setting::get('work_end_time', '19:00'),
+            ],
+        ]);
+    }
+
+    /**
+     * ワークログを新規作成する。
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate($this->rules());
+        $validated = $this->computeHours($validated);
+
+        WorkLog::create($validated);
+
+        return back();
+    }
+
+    /**
+     * ワークログを更新する。
+     */
+    public function update(Request $request, WorkLog $workLog): RedirectResponse
+    {
+        $validated = $request->validate($this->rules());
+        $validated = $this->computeHours($validated);
+
+        $workLog->update($validated);
+
+        return back();
+    }
+
+    /**
+     * ワークログを削除する。
+     */
+    public function destroy(WorkLog $workLog): RedirectResponse
+    {
+        $workLog->delete();
+
+        return back();
+    }
+
+    /**
+     * store/update 共通のバリデーションルール。
+     * hours は start_time/end_time から自動計算するため受け付けない。
+     * カテゴリはDBから動的に取得してバリデーションする（is_default=trueのデフォルト種別はnullで保存）。
+     *
+     * @return array<string, mixed[]>
+     */
+    private function rules(): array
+    {
+        $validValues = WorkLogCategory::where('is_active', true)
+            ->where('is_default', false)
+            ->pluck('value')
+            ->toArray();
+
+        return [
+            'date' => ['required', 'date'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
+            'member_id' => ['nullable', 'integer', 'exists:members,id'],
+            'epic_id' => ['nullable', 'integer', 'exists:epics,id'],
+            'issue_id' => ['nullable', 'integer', 'exists:issues,id'],
+            'category' => ['nullable', 'string', Rule::in($validValues)],
+            'note' => ['nullable', 'string', 'max:500'],
+        ];
+    }
+
+    /**
+     * start_time/end_time の差分から hours を 15分単位（0.25h）で算出して返す。
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function computeHours(array $validated): array
+    {
+        $start = Carbon::createFromFormat('H:i', $validated['start_time']);
+        $end = Carbon::createFromFormat('H:i', $validated['end_time']);
+
+        // 15分単位に切り捨てて decimal hour に変換する
+        $validated['hours'] = floor($start->diffInMinutes($end) / 15) * 0.25;
+
+        return $validated;
+    }
+}

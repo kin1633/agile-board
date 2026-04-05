@@ -19,8 +19,8 @@ class EpicController extends Controller
     {
         $estimation = $this->buildEstimation();
 
-        // サブイシュー（タスク）の工数集計のため subIssues を eager load する
-        $epics = Epic::with('issues.subIssues')->get()->map(
+        // GitHub リンク生成のため repository、実績集計のため subIssues.workLogs を eager load する
+        $epics = Epic::with(['issues.repository', 'issues.subIssues.repository', 'issues.subIssues.workLogs'])->get()->map(
             fn (Epic $epic) => $this->formatEpic($epic, $estimation['team_daily_hours'])
         );
 
@@ -206,12 +206,15 @@ class EpicController extends Controller
 
         $formattedIssues = $epic->issues->map(function ($issue) use (&$epicEstimated, &$epicActual) {
             $storyEstimated = (float) $issue->subIssues->sum('estimated_hours');
-            $storyActual = (float) $issue->subIssues->sum('actual_hours');
+            // 実績はワークログの合計から算出する（actual_hours カラムは使用しない）
+            $storyActual = (float) $issue->subIssues->sum(fn ($t) => $t->workLogs->sum('hours'));
             $epicEstimated += $storyEstimated;
             $epicActual += $storyActual;
 
             return [
                 'id' => $issue->id,
+                'github_issue_number' => $issue->github_issue_number,
+                'repository' => ['full_name' => $issue->repository?->full_name ?? ''],
                 'title' => $issue->title,
                 'state' => $issue->state,
                 // Story の担当者はタスクの担当者を集約して表示する
@@ -220,14 +223,27 @@ class EpicController extends Controller
                 'exclude_velocity' => $issue->exclude_velocity,
                 'estimated_hours' => $storyEstimated > 0 ? (float) round($storyEstimated, 2) : null,
                 'actual_hours' => $storyActual > 0 ? (float) round($storyActual, 2) : null,
-                'sub_issues' => $issue->subIssues->map(fn ($task) => [
-                    'id' => $task->id,
-                    'title' => $task->title,
-                    'state' => $task->state,
-                    'assignee_login' => $task->assignee_login,
-                    'estimated_hours' => $task->estimated_hours !== null ? (float) $task->estimated_hours : null,
-                    'actual_hours' => $task->actual_hours !== null ? (float) $task->actual_hours : null,
-                ])->values()->all(),
+                // 消化率: 実績÷予定×100（予定未設定の場合は null）
+                'completion_rate' => $storyEstimated > 0 ? (int) round($storyActual / $storyEstimated * 100) : null,
+                'sub_issues' => $issue->subIssues->map(function ($task) {
+                    $taskActual = (float) $task->workLogs->sum('hours');
+                    $taskEstimated = $task->estimated_hours !== null ? (float) $task->estimated_hours : null;
+
+                    return [
+                        'id' => $task->id,
+                        'github_issue_number' => $task->github_issue_number,
+                        'repository' => ['full_name' => $task->repository?->full_name ?? ''],
+                        'title' => $task->title,
+                        'state' => $task->state,
+                        'assignee_login' => $task->assignee_login,
+                        'estimated_hours' => $taskEstimated,
+                        'actual_hours' => $taskActual > 0 ? round($taskActual, 2) : null,
+                        // 消化率: 実績÷予定×100（予定未設定の場合は null）
+                        'completion_rate' => $taskEstimated !== null && $taskEstimated > 0
+                            ? (int) round($taskActual / $taskEstimated * 100)
+                            : null,
+                    ];
+                })->values()->all(),
             ];
         })->values()->all();
 

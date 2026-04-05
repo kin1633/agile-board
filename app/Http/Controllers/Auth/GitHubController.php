@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Member;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -36,6 +37,17 @@ class GitHubController extends Controller
                 'name' => $githubUser->getName() ?? $githubUser->getNickname(),
                 'avatar' => $githubUser->getAvatar(),
                 'github_token' => $githubUser->token,
+            ]
+        );
+
+        // 初回ログイン時のみメンバーを登録する。
+        // 一度登録されたメンバーは GitHub 側で削除されても残し続ける（工数履歴の保持のため）。
+        Member::firstOrCreate(
+            ['user_id' => $user->id],
+            [
+                'github_login' => $githubUser->getNickname(),
+                'display_name' => $githubUser->getName() ?? $githubUser->getNickname(),
+                'daily_hours' => 8,
             ]
         );
 

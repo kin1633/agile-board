@@ -1,11 +1,14 @@
 <?php
 
 use App\Http\Controllers\Settings\GeneralController;
+use App\Http\Controllers\Settings\HolidayController;
 use App\Http\Controllers\Settings\LabelController;
 use App\Http\Controllers\Settings\MemberController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\RepositoryController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\WorkLogCategoryController;
+use App\Http\Controllers\Settings\WorkLogCategoryGroupController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
@@ -29,6 +32,23 @@ Route::middleware(['auth'])->group(function () {
     // ラベル管理
     Route::get('settings/labels', [LabelController::class, 'index'])->name('settings.labels');
     Route::patch('settings/labels/{label}', [LabelController::class, 'update'])->name('settings.labels.update');
+
+    // 休日管理（国民の祝日インポート・現場独自休日のCRUD）
+    Route::get('settings/holidays', [HolidayController::class, 'index'])->name('settings.holidays');
+    Route::post('settings/holidays/import', [HolidayController::class, 'import'])->name('settings.holidays.import');
+    Route::post('settings/holidays', [HolidayController::class, 'store'])->name('settings.holidays.store');
+    Route::delete('settings/holidays/{holiday}', [HolidayController::class, 'destroy'])->name('settings.holidays.destroy');
+
+    // 実績入力種別管理
+    Route::get('settings/work-log-categories', [WorkLogCategoryController::class, 'index'])->name('settings.work-log-categories');
+    Route::post('settings/work-log-categories', [WorkLogCategoryController::class, 'store'])->name('settings.work-log-categories.store');
+    Route::patch('settings/work-log-categories/{workLogCategory}', [WorkLogCategoryController::class, 'update'])->name('settings.work-log-categories.update');
+    Route::delete('settings/work-log-categories/{workLogCategory}', [WorkLogCategoryController::class, 'destroy'])->name('settings.work-log-categories.destroy');
+
+    // 実績入力種別グループ管理
+    Route::post('settings/work-log-category-groups', [WorkLogCategoryGroupController::class, 'store'])->name('settings.work-log-category-groups.store');
+    Route::patch('settings/work-log-category-groups/{workLogCategoryGroup}', [WorkLogCategoryGroupController::class, 'update'])->name('settings.work-log-category-groups.update');
+    Route::delete('settings/work-log-category-groups/{workLogCategoryGroup}', [WorkLogCategoryGroupController::class, 'destroy'])->name('settings.work-log-category-groups.destroy');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');

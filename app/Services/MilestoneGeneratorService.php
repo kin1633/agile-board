@@ -32,14 +32,20 @@ class MilestoneGeneratorService
             $year = $current->year;
             $month = $current->month;
 
+            // 月の第1月曜日を started_at とし、翌月第1月曜日の前日を due_date とする
+            $startedAt = Carbon::create($year, $month, 1)->modify('first monday of this month');
+            $dueDate = Carbon::create($year, $month, 1)->addMonth()
+                ->modify('first monday of this month')
+                ->subDay();
+
             Milestone::firstOrCreate(
                 ['year' => $year, 'month' => $month],
                 [
                     'title' => "{$year}年{$month}月",
                     'goal' => null,
                     'status' => 'planning',
-                    'started_at' => null,
-                    'due_date' => null,
+                    'started_at' => $startedAt->toDateString(),
+                    'due_date' => $dueDate->toDateString(),
                 ],
             );
 

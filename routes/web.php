@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AttendanceLogController;
 use App\Http\Controllers\Auth\GitHubController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\DashboardController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\MilestoneController;
 use App\Http\Controllers\RetrospectiveController;
 use App\Http\Controllers\SprintController;
 use App\Http\Controllers\SyncController;
+use App\Http\Controllers\WorkLogController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -58,7 +60,20 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/retrospectives/{retrospective}', [RetrospectiveController::class, 'destroy'])->name('retrospectives.destroy');
 
     // Issue
+    Route::get('/stories', [IssueController::class, 'index'])->name('issues.index');
     Route::patch('/issues/{issue}', [IssueController::class, 'update'])->name('issues.update');
+
+    // ワークログ（日次実績入力）
+    Route::get('/work-logs', [WorkLogController::class, 'index'])->name('work-logs.index');
+    Route::post('/work-logs', [WorkLogController::class, 'store'])->name('work-logs.store');
+    Route::put('/work-logs/{workLog}', [WorkLogController::class, 'update'])->name('work-logs.update');
+    Route::delete('/work-logs/{workLog}', [WorkLogController::class, 'destroy'])->name('work-logs.destroy');
+
+    // 勤怠管理
+    Route::get('/attendance', [AttendanceLogController::class, 'index'])->name('attendance.index');
+    Route::post('/attendance', [AttendanceLogController::class, 'store'])->name('attendance.store');
+    Route::put('/attendance/{attendanceLog}', [AttendanceLogController::class, 'update'])->name('attendance.update');
+    Route::delete('/attendance/{attendanceLog}', [AttendanceLogController::class, 'destroy'])->name('attendance.destroy');
 
     // GitHub 同期
     Route::post('/sync', SyncController::class)->name('sync');

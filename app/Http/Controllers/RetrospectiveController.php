@@ -15,12 +15,17 @@ class RetrospectiveController extends Controller
     {
         $sprints = Sprint::orderByDesc('end_date')->get(['id', 'title', 'state', 'start_date', 'end_date']);
 
-        // スプリント選択：クエリパラメータ → 現在のオープンスプリント → 最新スプリントの順でフォールバック
+        // スプリント選択：クエリパラメータ → 期間中のスプリント → openスプリント → 最新スプリントの順でフォールバック
         $selectedSprintId = $request->integer('sprint_id') ?: null;
         if ($selectedSprintId) {
             $selectedSprint = Sprint::find($selectedSprintId);
         } else {
-            $selectedSprint = Sprint::where('state', 'open')->orderByDesc('end_date')->first()
+            $today = now()->toDateString();
+            $selectedSprint = Sprint::where('start_date', '<=', $today)
+                ->where('end_date', '>=', $today)
+                ->orderByDesc('end_date')
+                ->first()
+                ?? Sprint::where('state', 'open')->orderByDesc('end_date')->first()
                 ?? Sprint::orderByDesc('end_date')->first();
         }
 
@@ -36,6 +41,23 @@ class RetrospectiveController extends Controller
                 ])
             : collect();
 
+        // 履歴タブ用：全スプリントのレトロスペクティブを一括取得してスプリントごとにグループ化
+        $allRetrospectives = Retrospective::orderBy('created_at')->get();
+        $history = $sprints->map(fn (Sprint $s) => [
+            'id' => $s->id,
+            'title' => $s->title,
+            'start_date' => $s->start_date?->toDateString(),
+            'end_date' => $s->end_date?->toDateString(),
+            'retrospectives' => $allRetrospectives
+                ->where('sprint_id', $s->id)
+                ->values()
+                ->map(fn (Retrospective $r) => [
+                    'id' => $r->id,
+                    'type' => $r->type,
+                    'content' => $r->content,
+                ]),
+        ]);
+
         return Inertia::render('retrospectives/index', [
             'sprints' => $sprints->map(fn (Sprint $s) => [
                 'id' => $s->id,
@@ -47,8 +69,11 @@ class RetrospectiveController extends Controller
             'selectedSprint' => $selectedSprint ? [
                 'id' => $selectedSprint->id,
                 'title' => $selectedSprint->title,
+                'start_date' => $selectedSprint->start_date?->toDateString(),
+                'end_date' => $selectedSprint->end_date?->toDateString(),
             ] : null,
             'retrospectives' => $retrospectives,
+            'history' => $history,
         ]);
     }
 
