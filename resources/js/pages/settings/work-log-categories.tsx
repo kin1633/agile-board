@@ -1,5 +1,6 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
+import SettingsLayout from '@/layouts/settings/layout';
 import settings from '@/routes/settings';
 import workLogCategoryRoutes from '@/routes/settings/work-log-categories';
 import type { BreadcrumbItem } from '@/types';
@@ -101,7 +102,11 @@ export default function WorkLogCategoriesSettings({ categories }: Props) {
     };
 
     const handleDestroy = (category: CategoryRow) => {
-        if (!window.confirm(`「${category.label}」を削除しますか？この種別で登録された実績は「開発作業」として扱われます。`)) {
+        if (
+            !window.confirm(
+                `「${category.label}」を削除しますか？この種別で登録された実績は「開発作業」として扱われます。`,
+            )
+        ) {
             return;
         }
         router.delete(
@@ -113,163 +118,212 @@ export default function WorkLogCategoriesSettings({ categories }: Props) {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="実績種別設定" />
-            <div className="flex flex-col gap-6 p-6">
-                <div>
-                    <h1 className="text-xl font-semibold">実績種別設定</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        実績入力で選択できる種別を管理します。工数管理外の種別はカレンダーで薄く表示されます。
-                    </p>
-                </div>
+            <SettingsLayout>
+                <div className="flex flex-col gap-6">
+                    <div>
+                        <h1 className="text-xl font-semibold">実績種別設定</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            実績入力で選択できる種別を管理します。工数管理外の種別はカレンダーで薄く表示されます。
+                        </p>
+                    </div>
 
-                {/* 種別一覧 */}
-                <div className="rounded-xl border border-sidebar-border/70 bg-card">
-                    <ul className="divide-y divide-sidebar-border/50">
-                        {categories.map((category, index) => (
-                            <li
-                                key={category.id}
-                                className={`flex items-center justify-between px-6 py-3 ${!category.is_active ? 'opacity-50' : ''}`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    {/* カテゴリ色インジケーター */}
-                                    <span
-                                        className="h-3 w-3 rounded-full flex-shrink-0"
-                                        style={{ backgroundColor: category.color }}
-                                    />
-                                    <div>
-                                        <span className="text-sm font-medium">{category.label}</span>
-                                        {category.group_name && (
-                                            <span className="ml-2 text-xs text-muted-foreground">
-                                                {category.group_name}
+                    {/* 種別一覧 */}
+                    <div className="rounded-xl border border-sidebar-border/70 bg-card">
+                        <ul className="divide-y divide-sidebar-border/50">
+                            {categories.map((category, index) => (
+                                <li
+                                    key={category.id}
+                                    className={`flex items-center justify-between px-6 py-3 ${!category.is_active ? 'opacity-50' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {/* カテゴリ色インジケーター */}
+                                        <span
+                                            className="h-3 w-3 flex-shrink-0 rounded-full"
+                                            style={{
+                                                backgroundColor: category.color,
+                                            }}
+                                        />
+                                        <div>
+                                            <span className="text-sm font-medium">
+                                                {category.label}
+                                            </span>
+                                            {category.group_name && (
+                                                <span className="ml-2 text-xs text-muted-foreground">
+                                                    {category.group_name}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {!category.is_billable && (
+                                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                                工数管理外
+                                            </span>
+                                        )}
+                                        {category.is_default && (
+                                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                                デフォルト
                                             </span>
                                         )}
                                     </div>
-                                    {!category.is_billable && (
-                                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                                            工数管理外
-                                        </span>
-                                    )}
-                                    {category.is_default && (
-                                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                                            デフォルト
-                                        </span>
-                                    )}
-                                </div>
 
-                                <div className="flex items-center gap-1">
-                                    {/* 並び順変更ボタン */}
-                                    <button
-                                        onClick={() => handleMoveUp(category, index)}
-                                        disabled={index === 0}
-                                        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
-                                        title="上へ"
-                                    >
-                                        ↑
-                                    </button>
-                                    <button
-                                        onClick={() => handleMoveDown(category, index)}
-                                        disabled={index === categories.length - 1}
-                                        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
-                                        title="下へ"
-                                    >
-                                        ↓
-                                    </button>
-
-                                    {/* 表示/非表示切り替え */}
-                                    {!category.is_default && (
+                                    <div className="flex items-center gap-1">
+                                        {/* 並び順変更ボタン */}
                                         <button
-                                            onClick={() => handleToggleActive(category)}
-                                            className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                                            onClick={() =>
+                                                handleMoveUp(category, index)
+                                            }
+                                            disabled={index === 0}
+                                            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
+                                            title="上へ"
                                         >
-                                            {category.is_active ? '非表示' : '表示'}
+                                            ↑
                                         </button>
-                                    )}
-
-                                    {/* 削除ボタン */}
-                                    {!category.is_default && (
                                         <button
-                                            onClick={() => handleDestroy(category)}
-                                            className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
+                                            onClick={() =>
+                                                handleMoveDown(category, index)
+                                            }
+                                            disabled={
+                                                index === categories.length - 1
+                                            }
+                                            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
+                                            title="下へ"
                                         >
-                                            削除
+                                            ↓
                                         </button>
-                                    )}
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
 
-                {/* 新規種別追加フォーム */}
-                <div className="rounded-xl border border-sidebar-border/70 bg-card px-6 py-4">
-                    <h2 className="mb-3 text-sm font-medium">種別を追加</h2>
-                    <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3">
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">名前</label>
-                            <input
-                                type="text"
-                                value={addForm.data.label}
-                                onChange={(e) => addForm.setData('label', e.target.value)}
-                                placeholder="例: 社内研修"
-                                maxLength={100}
-                                className="w-40 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                                required
-                            />
-                            {addForm.errors.label && (
-                                <p className="text-xs text-destructive">{addForm.errors.label}</p>
-                            )}
-                        </div>
+                                        {/* 表示/非表示切り替え */}
+                                        {!category.is_default && (
+                                            <button
+                                                onClick={() =>
+                                                    handleToggleActive(category)
+                                                }
+                                                className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                                            >
+                                                {category.is_active
+                                                    ? '非表示'
+                                                    : '表示'}
+                                            </button>
+                                        )}
 
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">グループ</label>
-                            <input
-                                type="text"
-                                value={addForm.data.group_name}
-                                onChange={(e) => addForm.setData('group_name', e.target.value)}
-                                placeholder="例: 工数管理外"
-                                maxLength={100}
-                                className="w-36 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                            />
-                        </div>
+                                        {/* 削除ボタン */}
+                                        {!category.is_default && (
+                                            <button
+                                                onClick={() =>
+                                                    handleDestroy(category)
+                                                }
+                                                className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
+                                            >
+                                                削除
+                                            </button>
+                                        )}
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
 
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">色</label>
-                            <div className="flex items-center gap-1">
-                                {COLOR_PRESETS.map((color) => (
-                                    <button
-                                        key={color}
-                                        type="button"
-                                        onClick={() => addForm.setData('color', color)}
-                                        className={`h-6 w-6 rounded-full border-2 ${addForm.data.color === color ? 'border-foreground' : 'border-transparent'}`}
-                                        style={{ backgroundColor: color }}
-                                        title={color}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">工数に含める</label>
-                            <label className="flex items-center gap-2 py-1.5">
-                                <input
-                                    type="checkbox"
-                                    checked={addForm.data.is_billable}
-                                    onChange={(e) => addForm.setData('is_billable', e.target.checked)}
-                                    className="h-4 w-4 rounded border-input"
-                                />
-                                <span className="text-sm">{addForm.data.is_billable ? 'あり' : 'なし'}</span>
-                            </label>
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={addForm.processing}
-                            className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    {/* 新規種別追加フォーム */}
+                    <div className="rounded-xl border border-sidebar-border/70 bg-card px-6 py-4">
+                        <h2 className="mb-3 text-sm font-medium">種別を追加</h2>
+                        <form
+                            onSubmit={handleAdd}
+                            className="flex flex-wrap items-end gap-3"
                         >
-                            追加
-                        </button>
-                    </form>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-muted-foreground">
+                                    名前
+                                </label>
+                                <input
+                                    type="text"
+                                    value={addForm.data.label}
+                                    onChange={(e) =>
+                                        addForm.setData('label', e.target.value)
+                                    }
+                                    placeholder="例: 社内研修"
+                                    maxLength={100}
+                                    className="w-40 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                                    required
+                                />
+                                {addForm.errors.label && (
+                                    <p className="text-xs text-destructive">
+                                        {addForm.errors.label}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-muted-foreground">
+                                    グループ
+                                </label>
+                                <input
+                                    type="text"
+                                    value={addForm.data.group_name}
+                                    onChange={(e) =>
+                                        addForm.setData(
+                                            'group_name',
+                                            e.target.value,
+                                        )
+                                    }
+                                    placeholder="例: 工数管理外"
+                                    maxLength={100}
+                                    className="w-36 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-muted-foreground">
+                                    色
+                                </label>
+                                <div className="flex items-center gap-1">
+                                    {COLOR_PRESETS.map((color) => (
+                                        <button
+                                            key={color}
+                                            type="button"
+                                            onClick={() =>
+                                                addForm.setData('color', color)
+                                            }
+                                            className={`h-6 w-6 rounded-full border-2 ${addForm.data.color === color ? 'border-foreground' : 'border-transparent'}`}
+                                            style={{ backgroundColor: color }}
+                                            title={color}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-muted-foreground">
+                                    工数に含める
+                                </label>
+                                <label className="flex items-center gap-2 py-1.5">
+                                    <input
+                                        type="checkbox"
+                                        checked={addForm.data.is_billable}
+                                        onChange={(e) =>
+                                            addForm.setData(
+                                                'is_billable',
+                                                e.target.checked,
+                                            )
+                                        }
+                                        className="h-4 w-4 rounded border-input"
+                                    />
+                                    <span className="text-sm">
+                                        {addForm.data.is_billable
+                                            ? 'あり'
+                                            : 'なし'}
+                                    </span>
+                                </label>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={addForm.processing}
+                                className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                            >
+                                追加
+                            </button>
+                        </form>
+                    </div>
                 </div>
-            </div>
+            </SettingsLayout>
         </AppLayout>
     );
 }
