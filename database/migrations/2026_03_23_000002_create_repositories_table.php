@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('name'); // リポジトリ名
             $table->string('full_name')->unique(); // owner/name
             $table->boolean('active')->default(true);
+            $table->unsignedInteger('github_project_number')->nullable(); // GitHub ProjectsV2 のプロジェクト番号
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
         });

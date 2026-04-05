@@ -15,7 +15,8 @@ return new class extends Migration
         Schema::create('labels', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();
-            $table->boolean('exclude_velocity')->default(false);
+            // exclude_velocity から意味を反転して include_velocity に変更（true=ベロシティ計算に含める）
+            $table->boolean('include_velocity')->default(true);
             $table->timestamps();
         });
     }

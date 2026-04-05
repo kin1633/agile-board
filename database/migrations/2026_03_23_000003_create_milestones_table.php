@@ -11,17 +11,19 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // GitHub 同期モデルから独立した年月管理モデルに移行済み
         Schema::create('milestones', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('repository_id')->constrained()->cascadeOnDelete();
-            $table->integer('github_milestone_id');
+            $table->unsignedSmallInteger('year');
+            $table->unsignedTinyInteger('month');
             $table->string('title');
-            $table->date('due_on')->nullable();
-            $table->string('state')->default('open');
-            $table->timestamp('synced_at')->nullable();
+            $table->text('goal')->nullable();
+            $table->string('status')->default('planning'); // planning / active / closed
+            $table->date('started_at')->nullable();
+            $table->date('due_date')->nullable();
             $table->timestamps();
 
-            $table->unique(['repository_id', 'github_milestone_id']);
+            $table->unique(['year', 'month']);
         });
     }
 

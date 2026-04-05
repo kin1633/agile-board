@@ -16,6 +16,9 @@ return new class extends Migration
             $table->string('title');
             $table->text('description')->nullable();
             $table->string('status')->default('planning'); // planning / in_progress / done
+            $table->string('priority')->default('medium'); // low / medium / high
+            $table->date('due_date')->nullable();
+            $table->date('started_at')->nullable(); // in_progress 移行時に自動セット
             $table->timestamps();
         });
     }
