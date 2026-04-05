@@ -1,4 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import settings from '@/routes/settings';
@@ -43,7 +44,55 @@ interface Props {
     groups: GroupRow[];
 }
 
-export default function WorkLogCategoriesSettings({ categories, groups }: Props) {
+/** インライン編集フォームの値 */
+type EditValues = {
+    label: string;
+    work_log_category_group_id: number | null;
+    color: string;
+    is_billable: boolean;
+};
+
+export default function WorkLogCategoriesSettings({
+    categories,
+    groups,
+}: Props) {
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editValues, setEditValues] = useState<EditValues>({
+        label: '',
+        work_log_category_group_id: null,
+        color: '#3b82f6',
+        is_billable: true,
+    });
+
+    const handleStartEdit = (category: CategoryRow) => {
+        setEditingId(category.id);
+        setEditValues({
+            label: category.label,
+            work_log_category_group_id: category.work_log_category_group_id,
+            color: category.color,
+            is_billable: category.is_billable,
+        });
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+    };
+
+    const handleSaveEdit = (category: CategoryRow) => {
+        router.patch(
+            workLogCategoryRoutes.update({ workLogCategory: category.id }).url,
+            {
+                ...editValues,
+                sort_order: category.sort_order,
+                is_active: category.is_active,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => setEditingId(null),
+            },
+        );
+    };
+
     const addForm = useForm({
         label: '',
         work_log_category_group_id: null as number | null,
@@ -145,7 +194,9 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
             return;
         }
         router.delete(
-            workLogCategoryGroupRoutes.destroy({ workLogCategoryGroup: group.id }).url,
+            workLogCategoryGroupRoutes.destroy({
+                workLogCategoryGroup: group.id,
+            }).url,
             { preserveScroll: true },
         );
     };
@@ -156,12 +207,15 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
         }
         const prev = groups[index - 1];
         router.patch(
-            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: group.id }).url,
+            workLogCategoryGroupRoutes.update({
+                workLogCategoryGroup: group.id,
+            }).url,
             { name: group.name, sort_order: prev.sort_order },
             { preserveScroll: true },
         );
         router.patch(
-            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: prev.id }).url,
+            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: prev.id })
+                .url,
             { name: prev.name, sort_order: group.sort_order },
             { preserveScroll: true },
         );
@@ -173,12 +227,15 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
         }
         const next = groups[index + 1];
         router.patch(
-            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: group.id }).url,
+            workLogCategoryGroupRoutes.update({
+                workLogCategoryGroup: group.id,
+            }).url,
             { name: group.name, sort_order: next.sort_order },
             { preserveScroll: true },
         );
         router.patch(
-            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: next.id }).url,
+            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: next.id })
+                .url,
             { name: next.name, sort_order: group.sort_order },
             { preserveScroll: true },
         );
@@ -199,7 +256,9 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                     {/* グループ管理 */}
                     <div className="rounded-xl border border-sidebar-border/70 bg-card">
                         <div className="border-b border-sidebar-border/50 px-6 py-3">
-                            <h2 className="text-sm font-medium">グループ管理</h2>
+                            <h2 className="text-sm font-medium">
+                                グループ管理
+                            </h2>
                         </div>
                         <ul className="divide-y divide-sidebar-border/50">
                             {groups.map((group, index) => (
@@ -207,10 +266,14 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                     key={group.id}
                                     className="flex items-center justify-between px-6 py-3"
                                 >
-                                    <span className="text-sm">{group.name}</span>
+                                    <span className="text-sm">
+                                        {group.name}
+                                    </span>
                                     <div className="flex items-center gap-1">
                                         <button
-                                            onClick={() => handleMoveGroupUp(group, index)}
+                                            onClick={() =>
+                                                handleMoveGroupUp(group, index)
+                                            }
                                             disabled={index === 0}
                                             className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
                                             title="上へ"
@@ -218,15 +281,24 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                             ↑
                                         </button>
                                         <button
-                                            onClick={() => handleMoveGroupDown(group, index)}
-                                            disabled={index === groups.length - 1}
+                                            onClick={() =>
+                                                handleMoveGroupDown(
+                                                    group,
+                                                    index,
+                                                )
+                                            }
+                                            disabled={
+                                                index === groups.length - 1
+                                            }
                                             className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
                                             title="下へ"
                                         >
                                             ↓
                                         </button>
                                         <button
-                                            onClick={() => handleDestroyGroup(group)}
+                                            onClick={() =>
+                                                handleDestroyGroup(group)
+                                            }
                                             className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
                                         >
                                             削除
@@ -250,7 +322,10 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                         type="text"
                                         value={addGroupForm.data.name}
                                         onChange={(e) =>
-                                            addGroupForm.setData('name', e.target.value)
+                                            addGroupForm.setData(
+                                                'name',
+                                                e.target.value,
+                                            )
                                         }
                                         placeholder="例: PJ管理工数"
                                         maxLength={100}
@@ -278,8 +353,177 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                     <div className="rounded-xl border border-sidebar-border/70 bg-card">
                         <ul className="divide-y divide-sidebar-border/50">
                             {categories.map((category, index) => {
+                                const isEditing = editingId === category.id;
+
+                                if (isEditing) {
+                                    return (
+                                        <li
+                                            key={category.id}
+                                            className="px-6 py-3"
+                                        >
+                                            {/* インライン編集フォーム */}
+                                            <div className="flex flex-wrap items-end gap-3">
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs text-muted-foreground">
+                                                        名前
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={editValues.label}
+                                                        onChange={(e) =>
+                                                            setEditValues(
+                                                                (v) => ({
+                                                                    ...v,
+                                                                    label: e
+                                                                        .target
+                                                                        .value,
+                                                                }),
+                                                            )
+                                                        }
+                                                        maxLength={100}
+                                                        className="w-40 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                                                        required
+                                                        autoFocus
+                                                    />
+                                                </div>
+
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs text-muted-foreground">
+                                                        グループ
+                                                    </label>
+                                                    <select
+                                                        value={
+                                                            editValues.work_log_category_group_id ??
+                                                            ''
+                                                        }
+                                                        onChange={(e) =>
+                                                            setEditValues(
+                                                                (v) => ({
+                                                                    ...v,
+                                                                    work_log_category_group_id:
+                                                                        e.target
+                                                                            .value
+                                                                            ? Number(
+                                                                                  e
+                                                                                      .target
+                                                                                      .value,
+                                                                              )
+                                                                            : null,
+                                                                }),
+                                                            )
+                                                        }
+                                                        className="w-40 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                                                    >
+                                                        <option value="">
+                                                            グループなし
+                                                        </option>
+                                                        {groups.map((g) => (
+                                                            <option
+                                                                key={g.id}
+                                                                value={g.id}
+                                                            >
+                                                                {g.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs text-muted-foreground">
+                                                        色
+                                                    </label>
+                                                    <div className="flex items-center gap-1">
+                                                        {COLOR_PRESETS.map(
+                                                            (color) => (
+                                                                <button
+                                                                    key={color}
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setEditValues(
+                                                                            (
+                                                                                v,
+                                                                            ) => ({
+                                                                                ...v,
+                                                                                color,
+                                                                            }),
+                                                                        )
+                                                                    }
+                                                                    className={`h-6 w-6 rounded-full border-2 ${editValues.color === color ? 'border-foreground' : 'border-transparent'}`}
+                                                                    style={{
+                                                                        backgroundColor:
+                                                                            color,
+                                                                    }}
+                                                                    title={
+                                                                        color
+                                                                    }
+                                                                />
+                                                            ),
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs text-muted-foreground">
+                                                        工数に含める
+                                                    </label>
+                                                    <label className="flex items-center gap-2 py-1.5">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={
+                                                                editValues.is_billable
+                                                            }
+                                                            onChange={(e) =>
+                                                                setEditValues(
+                                                                    (v) => ({
+                                                                        ...v,
+                                                                        is_billable:
+                                                                            e
+                                                                                .target
+                                                                                .checked,
+                                                                    }),
+                                                                )
+                                                            }
+                                                            className="h-4 w-4 rounded border-input"
+                                                        />
+                                                        <span className="text-sm">
+                                                            {editValues.is_billable
+                                                                ? 'あり'
+                                                                : 'なし'}
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleSaveEdit(
+                                                                category,
+                                                            )
+                                                        }
+                                                        className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                                                    >
+                                                        保存
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={
+                                                            handleCancelEdit
+                                                        }
+                                                        className="rounded-md border border-input px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                                                    >
+                                                        キャンセル
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    );
+                                }
+
                                 const groupName = groups.find(
-                                    (g) => g.id === category.work_log_category_group_id,
+                                    (g) =>
+                                        g.id ===
+                                        category.work_log_category_group_id,
                                 )?.name;
 
                                 return (
@@ -292,7 +536,8 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                             <span
                                                 className="h-3 w-3 flex-shrink-0 rounded-full"
                                                 style={{
-                                                    backgroundColor: category.color,
+                                                    backgroundColor:
+                                                        category.color,
                                                 }}
                                             />
                                             <div>
@@ -321,7 +566,10 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                             {/* 並び順変更ボタン */}
                                             <button
                                                 onClick={() =>
-                                                    handleMoveUp(category, index)
+                                                    handleMoveUp(
+                                                        category,
+                                                        index,
+                                                    )
                                                 }
                                                 disabled={index === 0}
                                                 className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
@@ -331,10 +579,14 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                             </button>
                                             <button
                                                 onClick={() =>
-                                                    handleMoveDown(category, index)
+                                                    handleMoveDown(
+                                                        category,
+                                                        index,
+                                                    )
                                                 }
                                                 disabled={
-                                                    index === categories.length - 1
+                                                    index ===
+                                                    categories.length - 1
                                                 }
                                                 className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
                                                 title="下へ"
@@ -342,11 +594,23 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                                 ↓
                                             </button>
 
+                                            {/* 編集ボタン */}
+                                            <button
+                                                onClick={() =>
+                                                    handleStartEdit(category)
+                                                }
+                                                className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                                            >
+                                                編集
+                                            </button>
+
                                             {/* 表示/非表示切り替え */}
                                             {!category.is_default && (
                                                 <button
                                                     onClick={() =>
-                                                        handleToggleActive(category)
+                                                        handleToggleActive(
+                                                            category,
+                                                        )
                                                     }
                                                     className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
                                                 >
@@ -408,11 +672,16 @@ export default function WorkLogCategoriesSettings({ categories, groups }: Props)
                                     グループ
                                 </label>
                                 <select
-                                    value={addForm.data.work_log_category_group_id ?? ''}
+                                    value={
+                                        addForm.data
+                                            .work_log_category_group_id ?? ''
+                                    }
                                     onChange={(e) =>
                                         addForm.setData(
                                             'work_log_category_group_id',
-                                            e.target.value ? Number(e.target.value) : null,
+                                            e.target.value
+                                                ? Number(e.target.value)
+                                                : null,
                                         )
                                     }
                                     className="w-40 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
