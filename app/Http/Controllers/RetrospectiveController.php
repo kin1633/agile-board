@@ -15,12 +15,17 @@ class RetrospectiveController extends Controller
     {
         $sprints = Sprint::orderByDesc('end_date')->get(['id', 'title', 'state', 'start_date', 'end_date']);
 
-        // スプリント選択：クエリパラメータ → 現在のオープンスプリント → 最新スプリントの順でフォールバック
+        // スプリント選択：クエリパラメータ → 期間中のスプリント → openスプリント → 最新スプリントの順でフォールバック
         $selectedSprintId = $request->integer('sprint_id') ?: null;
         if ($selectedSprintId) {
             $selectedSprint = Sprint::find($selectedSprintId);
         } else {
-            $selectedSprint = Sprint::where('state', 'open')->orderByDesc('end_date')->first()
+            $today = now()->toDateString();
+            $selectedSprint = Sprint::where('start_date', '<=', $today)
+                ->where('end_date', '>=', $today)
+                ->orderByDesc('end_date')
+                ->first()
+                ?? Sprint::where('state', 'open')->orderByDesc('end_date')->first()
                 ?? Sprint::orderByDesc('end_date')->first();
         }
 
