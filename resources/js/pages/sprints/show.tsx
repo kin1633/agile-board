@@ -165,16 +165,16 @@ export default function SprintShow({
                 </div>
 
                 {/* タブ */}
-                <div className="flex border-b border-sidebar-border/70">
+                <div className="flex rounded-lg border border-sidebar-border/70 p-0.5 text-sm">
                     {(['issues', 'burndown', 'workload'] as Tab[]).map(
                         (tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`px-4 py-2 text-sm font-medium ${
+                                className={`rounded-md px-3 py-1.5 transition-colors ${
                                     activeTab === tab
-                                        ? 'border-b-2 border-primary text-primary'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'hover:bg-muted/50'
                                 }`}
                             >
                                 {tab === 'issues'
