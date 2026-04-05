@@ -59,7 +59,7 @@ GitHub から同期するリポジトリを管理します。
 各リポジトリ行の `Project #` 列に GitHub Projects v2 のプロジェクト番号を入力すると、**Iteration モード**が有効になります。
 
 - **設定あり**: GitHub Projects の Iteration がスプリントとして同期されます
-- **設定なし（デフォルト）**: GitHub マイルストーンがスプリントとして同期されます（後方互換）
+- **設定なし（デフォルト）**: スプリントの同期は行われません
 
 プロジェクト番号は GitHub Projects の URL から確認できます（例: `https://github.com/orgs/myorg/projects/5` → `5`）。
 

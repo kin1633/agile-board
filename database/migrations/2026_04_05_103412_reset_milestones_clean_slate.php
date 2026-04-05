@@ -14,7 +14,10 @@ return new class extends Migration
     public function up(): void
     {
         DB::table('sprints')->update(['milestone_id' => null]);
+        // TRUNCATE は FK 制約があると MySQL で失敗するため、FK チェックを一時無効化して TRUNCATE する
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
         DB::table('milestones')->truncate();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 
     public function down(): void
