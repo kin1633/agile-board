@@ -33,7 +33,7 @@ import issues from '@/routes/issues';
 import retrospectives from '@/routes/retrospectives';
 import workLogs from '@/routes/work-logs';
 import attendanceRoutes from '@/routes/attendance';
-import { general, repositories, members, labels } from '@/routes/settings';
+import { general } from '@/routes/settings';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -81,12 +81,6 @@ const mainNavItems: NavItem[] = [
         title: '設定',
         href: general(),
         icon: Settings,
-        children: [
-            { title: '一般', href: general() },
-            { title: 'リポジトリ', href: repositories() },
-            { title: 'メンバー', href: members() },
-            { title: 'ラベル', href: labels() },
-        ],
     },
 ];
 

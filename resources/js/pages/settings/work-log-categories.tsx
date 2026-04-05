@@ -3,6 +3,7 @@ import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import settings from '@/routes/settings';
 import workLogCategoryRoutes from '@/routes/settings/work-log-categories';
+import workLogCategoryGroupRoutes from '@/routes/settings/work-log-category-groups';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -23,7 +24,7 @@ interface CategoryRow {
     id: number;
     value: string;
     label: string;
-    group_name: string | null;
+    work_log_category_group_id: number | null;
     color: string;
     is_billable: boolean;
     is_default: boolean;
@@ -31,17 +32,29 @@ interface CategoryRow {
     is_active: boolean;
 }
 
-interface Props {
-    categories: CategoryRow[];
+interface GroupRow {
+    id: number;
+    name: string;
+    sort_order: number;
 }
 
-export default function WorkLogCategoriesSettings({ categories }: Props) {
+interface Props {
+    categories: CategoryRow[];
+    groups: GroupRow[];
+}
+
+export default function WorkLogCategoriesSettings({ categories, groups }: Props) {
     const addForm = useForm({
         label: '',
-        group_name: '',
+        work_log_category_group_id: null as number | null,
         color: '#3b82f6',
         is_billable: true,
         sort_order: categories.length,
+    });
+
+    const addGroupForm = useForm({
+        name: '',
+        sort_order: groups.length,
     });
 
     const handleAdd = (e: React.FormEvent) => {
@@ -52,12 +65,20 @@ export default function WorkLogCategoriesSettings({ categories }: Props) {
         });
     };
 
+    const handleAddGroup = (e: React.FormEvent) => {
+        e.preventDefault();
+        addGroupForm.post(workLogCategoryGroupRoutes.store().url, {
+            preserveScroll: true,
+            onSuccess: () => addGroupForm.reset(),
+        });
+    };
+
     const handleToggleActive = (category: CategoryRow) => {
         router.patch(
             workLogCategoryRoutes.update({ workLogCategory: category.id }).url,
             {
                 label: category.label,
-                group_name: category.group_name,
+                work_log_category_group_id: category.work_log_category_group_id,
                 color: category.color,
                 is_billable: category.is_billable,
                 sort_order: category.sort_order,
@@ -115,6 +136,54 @@ export default function WorkLogCategoriesSettings({ categories }: Props) {
         );
     };
 
+    const handleDestroyGroup = (group: GroupRow) => {
+        if (
+            !window.confirm(
+                `「${group.name}」を削除しますか？このグループに属する種別のグループは「グループなし」になります。`,
+            )
+        ) {
+            return;
+        }
+        router.delete(
+            workLogCategoryGroupRoutes.destroy({ workLogCategoryGroup: group.id }).url,
+            { preserveScroll: true },
+        );
+    };
+
+    const handleMoveGroupUp = (group: GroupRow, index: number) => {
+        if (index === 0) {
+            return;
+        }
+        const prev = groups[index - 1];
+        router.patch(
+            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: group.id }).url,
+            { name: group.name, sort_order: prev.sort_order },
+            { preserveScroll: true },
+        );
+        router.patch(
+            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: prev.id }).url,
+            { name: prev.name, sort_order: group.sort_order },
+            { preserveScroll: true },
+        );
+    };
+
+    const handleMoveGroupDown = (group: GroupRow, index: number) => {
+        if (index === groups.length - 1) {
+            return;
+        }
+        const next = groups[index + 1];
+        router.patch(
+            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: group.id }).url,
+            { name: group.name, sort_order: next.sort_order },
+            { preserveScroll: true },
+        );
+        router.patch(
+            workLogCategoryGroupRoutes.update({ workLogCategoryGroup: next.id }).url,
+            { name: next.name, sort_order: group.sort_order },
+            { preserveScroll: true },
+        );
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="実績種別設定" />
@@ -123,54 +192,25 @@ export default function WorkLogCategoriesSettings({ categories }: Props) {
                     <div>
                         <h1 className="text-xl font-semibold">実績種別設定</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            実績入力で選択できる種別を管理します。工数管理外の種別はカレンダーで薄く表示されます。
+                            実績入力で選択できる種別とグループを管理します。工数管理外の種別はカレンダーで薄く表示されます。
                         </p>
                     </div>
 
-                    {/* 種別一覧 */}
+                    {/* グループ管理 */}
                     <div className="rounded-xl border border-sidebar-border/70 bg-card">
+                        <div className="border-b border-sidebar-border/50 px-6 py-3">
+                            <h2 className="text-sm font-medium">グループ管理</h2>
+                        </div>
                         <ul className="divide-y divide-sidebar-border/50">
-                            {categories.map((category, index) => (
+                            {groups.map((group, index) => (
                                 <li
-                                    key={category.id}
-                                    className={`flex items-center justify-between px-6 py-3 ${!category.is_active ? 'opacity-50' : ''}`}
+                                    key={group.id}
+                                    className="flex items-center justify-between px-6 py-3"
                                 >
-                                    <div className="flex items-center gap-3">
-                                        {/* カテゴリ色インジケーター */}
-                                        <span
-                                            className="h-3 w-3 flex-shrink-0 rounded-full"
-                                            style={{
-                                                backgroundColor: category.color,
-                                            }}
-                                        />
-                                        <div>
-                                            <span className="text-sm font-medium">
-                                                {category.label}
-                                            </span>
-                                            {category.group_name && (
-                                                <span className="ml-2 text-xs text-muted-foreground">
-                                                    {category.group_name}
-                                                </span>
-                                            )}
-                                        </div>
-                                        {!category.is_billable && (
-                                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                                                工数管理外
-                                            </span>
-                                        )}
-                                        {category.is_default && (
-                                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                                                デフォルト
-                                            </span>
-                                        )}
-                                    </div>
-
+                                    <span className="text-sm">{group.name}</span>
                                     <div className="flex items-center gap-1">
-                                        {/* 並び順変更ボタン */}
                                         <button
-                                            onClick={() =>
-                                                handleMoveUp(category, index)
-                                            }
+                                            onClick={() => handleMoveGroupUp(group, index)}
                                             disabled={index === 0}
                                             className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
                                             title="上へ"
@@ -178,46 +218,159 @@ export default function WorkLogCategoriesSettings({ categories }: Props) {
                                             ↑
                                         </button>
                                         <button
-                                            onClick={() =>
-                                                handleMoveDown(category, index)
-                                            }
-                                            disabled={
-                                                index === categories.length - 1
-                                            }
+                                            onClick={() => handleMoveGroupDown(group, index)}
+                                            disabled={index === groups.length - 1}
                                             className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
                                             title="下へ"
                                         >
                                             ↓
                                         </button>
-
-                                        {/* 表示/非表示切り替え */}
-                                        {!category.is_default && (
-                                            <button
-                                                onClick={() =>
-                                                    handleToggleActive(category)
-                                                }
-                                                className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-                                            >
-                                                {category.is_active
-                                                    ? '非表示'
-                                                    : '表示'}
-                                            </button>
-                                        )}
-
-                                        {/* 削除ボタン */}
-                                        {!category.is_default && (
-                                            <button
-                                                onClick={() =>
-                                                    handleDestroy(category)
-                                                }
-                                                className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
-                                            >
-                                                削除
-                                            </button>
-                                        )}
+                                        <button
+                                            onClick={() => handleDestroyGroup(group)}
+                                            className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
+                                        >
+                                            削除
+                                        </button>
                                     </div>
                                 </li>
                             ))}
+                        </ul>
+
+                        {/* グループ追加フォーム */}
+                        <div className="border-t border-sidebar-border/50 px-6 py-3">
+                            <form
+                                onSubmit={handleAddGroup}
+                                className="flex items-end gap-3"
+                            >
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs text-muted-foreground">
+                                        グループ名
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={addGroupForm.data.name}
+                                        onChange={(e) =>
+                                            addGroupForm.setData('name', e.target.value)
+                                        }
+                                        placeholder="例: PJ管理工数"
+                                        maxLength={100}
+                                        className="w-48 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                                        required
+                                    />
+                                    {addGroupForm.errors.name && (
+                                        <p className="text-xs text-destructive">
+                                            {addGroupForm.errors.name}
+                                        </p>
+                                    )}
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={addGroupForm.processing}
+                                    className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                    追加
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    {/* 種別一覧 */}
+                    <div className="rounded-xl border border-sidebar-border/70 bg-card">
+                        <ul className="divide-y divide-sidebar-border/50">
+                            {categories.map((category, index) => {
+                                const groupName = groups.find(
+                                    (g) => g.id === category.work_log_category_group_id,
+                                )?.name;
+
+                                return (
+                                    <li
+                                        key={category.id}
+                                        className={`flex items-center justify-between px-6 py-3 ${!category.is_active ? 'opacity-50' : ''}`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            {/* カテゴリ色インジケーター */}
+                                            <span
+                                                className="h-3 w-3 flex-shrink-0 rounded-full"
+                                                style={{
+                                                    backgroundColor: category.color,
+                                                }}
+                                            />
+                                            <div>
+                                                <span className="text-sm font-medium">
+                                                    {category.label}
+                                                </span>
+                                                {groupName && (
+                                                    <span className="ml-2 text-xs text-muted-foreground">
+                                                        {groupName}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {!category.is_billable && (
+                                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                                    工数管理外
+                                                </span>
+                                            )}
+                                            {category.is_default && (
+                                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                                    デフォルト
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1">
+                                            {/* 並び順変更ボタン */}
+                                            <button
+                                                onClick={() =>
+                                                    handleMoveUp(category, index)
+                                                }
+                                                disabled={index === 0}
+                                                className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
+                                                title="上へ"
+                                            >
+                                                ↑
+                                            </button>
+                                            <button
+                                                onClick={() =>
+                                                    handleMoveDown(category, index)
+                                                }
+                                                disabled={
+                                                    index === categories.length - 1
+                                                }
+                                                className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
+                                                title="下へ"
+                                            >
+                                                ↓
+                                            </button>
+
+                                            {/* 表示/非表示切り替え */}
+                                            {!category.is_default && (
+                                                <button
+                                                    onClick={() =>
+                                                        handleToggleActive(category)
+                                                    }
+                                                    className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                                                >
+                                                    {category.is_active
+                                                        ? '非表示'
+                                                        : '表示'}
+                                                </button>
+                                            )}
+
+                                            {/* 削除ボタン */}
+                                            {!category.is_default && (
+                                                <button
+                                                    onClick={() =>
+                                                        handleDestroy(category)
+                                                    }
+                                                    className="ml-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
+                                                >
+                                                    削除
+                                                </button>
+                                            )}
+                                        </div>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </div>
 
@@ -254,19 +407,23 @@ export default function WorkLogCategoriesSettings({ categories }: Props) {
                                 <label className="text-xs text-muted-foreground">
                                     グループ
                                 </label>
-                                <input
-                                    type="text"
-                                    value={addForm.data.group_name}
+                                <select
+                                    value={addForm.data.work_log_category_group_id ?? ''}
                                     onChange={(e) =>
                                         addForm.setData(
-                                            'group_name',
-                                            e.target.value,
+                                            'work_log_category_group_id',
+                                            e.target.value ? Number(e.target.value) : null,
                                         )
                                     }
-                                    placeholder="例: 工数管理外"
-                                    maxLength={100}
-                                    className="w-36 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                                />
+                                    className="w-40 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                                >
+                                    <option value="">グループなし</option>
+                                    {groups.map((g) => (
+                                        <option key={g.id} value={g.id}>
+                                            {g.name}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="flex flex-col gap-1">

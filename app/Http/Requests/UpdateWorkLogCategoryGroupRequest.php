@@ -2,10 +2,12 @@
 
 namespace App\Http\Requests;
 
+use App\Models\WorkLogCategoryGroup;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
-class StoreWorkLogCategoryRequest extends FormRequest
+class UpdateWorkLogCategoryGroupRequest extends FormRequest
 {
     /**
      * 認証済みユーザーであれば誰でも実行可能。
@@ -20,11 +22,12 @@ class StoreWorkLogCategoryRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var WorkLogCategoryGroup $group */
+        $group = $this->route('workLogCategoryGroup');
+
         return [
-            'label' => ['required', 'string', 'max:100'],
-            'work_log_category_group_id' => ['nullable', 'integer', 'exists:work_log_category_groups,id'],
-            'color' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'is_billable' => ['required', 'boolean'],
+            // 自分自身は除外して重複チェック
+            'name' => ['required', 'string', 'max:100', Rule::unique('work_log_category_groups', 'name')->ignore($group->id)],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }

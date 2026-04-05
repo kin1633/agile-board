@@ -5,7 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class StoreWorkLogCategoryRequest extends FormRequest
+class StoreWorkLogCategoryGroupRequest extends FormRequest
 {
     /**
      * 認証済みユーザーであれば誰でも実行可能。
@@ -21,10 +21,7 @@ class StoreWorkLogCategoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'label' => ['required', 'string', 'max:100'],
-            'work_log_category_group_id' => ['nullable', 'integer', 'exists:work_log_category_groups,id'],
-            'color' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'is_billable' => ['required', 'boolean'],
+            'name' => ['required', 'string', 'max:100', 'unique:work_log_category_groups,name'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }

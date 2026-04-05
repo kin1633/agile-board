@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WorkLogCategory extends Model
 {
@@ -13,7 +14,7 @@ class WorkLogCategory extends Model
     protected $fillable = [
         'value',
         'label',
-        'group_name',
+        'work_log_category_group_id',
         'color',
         'is_billable',
         'is_default',
@@ -26,6 +27,14 @@ class WorkLogCategory extends Model
         'is_default' => 'boolean',
         'is_active' => 'boolean',
     ];
+
+    /**
+     * この種別が属するグループを返す。
+     */
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(WorkLogCategoryGroup::class, 'work_log_category_group_id');
+    }
 
     /**
      * アクティブなカテゴリを並び順で取得するスコープ。

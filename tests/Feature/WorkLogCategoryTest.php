@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Models\WorkLog;
 use App\Models\WorkLogCategory;
+use App\Models\WorkLogCategoryGroup;
 
 test('未認証ユーザーは実績種別設定にアクセスできない', function () {
     $this->get(route('settings.work-log-categories'))->assertRedirect(route('login'));
@@ -17,16 +18,18 @@ test('実績種別一覧が表示される', function () {
         ->assertInertia(fn ($page) => $page
             ->component('settings/work-log-categories')
             ->has('categories')
+            ->has('groups')
         );
 });
 
 test('実績種別を新規作成できる', function () {
     $user = User::factory()->create();
+    $group = WorkLogCategoryGroup::where('name', '工数管理外')->first();
 
     $this->actingAs($user)
         ->post(route('settings.work-log-categories.store'), [
             'label' => '社内研修',
-            'group_name' => '工数管理外',
+            'work_log_category_group_id' => $group->id,
             'color' => '#10b981',
             'is_billable' => false,
             'sort_order' => 10,
@@ -35,10 +38,26 @@ test('実績種別を新規作成できる', function () {
 
     $this->assertDatabaseHas('work_log_categories', [
         'label' => '社内研修',
-        'group_name' => '工数管理外',
+        'work_log_category_group_id' => $group->id,
         'color' => '#10b981',
         'is_billable' => false,
     ]);
+});
+
+test('グループ未指定でも実績種別を新規作成できる', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('settings.work-log-categories.store'), [
+            'label' => 'テスト種別',
+            'work_log_category_group_id' => null,
+            'color' => '#3b82f6',
+            'is_billable' => true,
+        ]);
+
+    $category = WorkLogCategory::where('label', 'テスト種別')->first();
+    expect($category)->not->toBeNull();
+    expect($category->work_log_category_group_id)->toBeNull();
 });
 
 test('新規作成時に value が自動生成される', function () {
@@ -47,7 +66,7 @@ test('新規作成時に value が自動生成される', function () {
     $this->actingAs($user)
         ->post(route('settings.work-log-categories.store'), [
             'label' => 'テスト種別',
-            'group_name' => null,
+            'work_log_category_group_id' => null,
             'color' => '#3b82f6',
             'is_billable' => true,
         ]);
@@ -59,6 +78,7 @@ test('新規作成時に value が自動生成される', function () {
 
 test('実績種別を更新できる', function () {
     $user = User::factory()->create();
+    $group = WorkLogCategoryGroup::factory()->create();
     $category = WorkLogCategory::factory()->create([
         'label' => '旧ラベル',
         'is_active' => true,
@@ -67,7 +87,7 @@ test('実績種別を更新できる', function () {
     $this->actingAs($user)
         ->patch(route('settings.work-log-categories.update', $category), [
             'label' => '新ラベル',
-            'group_name' => null,
+            'work_log_category_group_id' => $group->id,
             'color' => '#3b82f6',
             'is_billable' => true,
             'sort_order' => 5,
@@ -78,6 +98,7 @@ test('実績種別を更新できる', function () {
     $this->assertDatabaseHas('work_log_categories', [
         'id' => $category->id,
         'label' => '新ラベル',
+        'work_log_category_group_id' => $group->id,
         'is_active' => false,
     ]);
 });

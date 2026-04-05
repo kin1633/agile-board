@@ -8,6 +8,7 @@ use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\RepositoryController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\WorkLogCategoryController;
+use App\Http\Controllers\Settings\WorkLogCategoryGroupController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
@@ -43,6 +44,11 @@ Route::middleware(['auth'])->group(function () {
     Route::post('settings/work-log-categories', [WorkLogCategoryController::class, 'store'])->name('settings.work-log-categories.store');
     Route::patch('settings/work-log-categories/{workLogCategory}', [WorkLogCategoryController::class, 'update'])->name('settings.work-log-categories.update');
     Route::delete('settings/work-log-categories/{workLogCategory}', [WorkLogCategoryController::class, 'destroy'])->name('settings.work-log-categories.destroy');
+
+    // 実績入力種別グループ管理
+    Route::post('settings/work-log-category-groups', [WorkLogCategoryGroupController::class, 'store'])->name('settings.work-log-category-groups.store');
+    Route::patch('settings/work-log-category-groups/{workLogCategoryGroup}', [WorkLogCategoryGroupController::class, 'update'])->name('settings.work-log-category-groups.update');
+    Route::delete('settings/work-log-category-groups/{workLogCategoryGroup}', [WorkLogCategoryGroupController::class, 'destroy'])->name('settings.work-log-category-groups.destroy');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');

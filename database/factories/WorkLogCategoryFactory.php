@@ -20,7 +20,7 @@ class WorkLogCategoryFactory extends Factory
         return [
             'value' => 'custom_'.$this->faker->unique()->regexify('[a-z0-9]{8}'),
             'label' => $this->faker->word(),
-            'group_name' => null,
+            'work_log_category_group_id' => null,
             'color' => '#3b82f6',
             'is_billable' => true,
             'is_default' => false,

@@ -7,6 +7,7 @@ use App\Http\Requests\StoreWorkLogCategoryRequest;
 use App\Http\Requests\UpdateWorkLogCategoryRequest;
 use App\Models\WorkLog;
 use App\Models\WorkLogCategory;
+use App\Models\WorkLogCategoryGroup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -20,9 +21,11 @@ class WorkLogCategoryController extends Controller
     public function index(): Response
     {
         $categories = WorkLogCategory::orderBy('sort_order')->get();
+        $groups = WorkLogCategoryGroup::orderBy('sort_order')->get();
 
         return Inertia::render('settings/work-log-categories', [
             'categories' => $categories,
+            'groups' => $groups,
         ]);
     }
 
