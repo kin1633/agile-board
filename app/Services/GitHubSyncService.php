@@ -80,6 +80,10 @@ class GitHubSyncService
         $this->syncEpicStatusOptions();
         // 優先度リストを使って Epic の github_status を集計する
         $this->syncEpicGitHubStatuses();
+        // 未知の優先度値を優先度リストへ先に追記する
+        $this->syncEpicPriorityOptions();
+        // 優先度リストを使って Epic の github_priority を集計する
+        $this->syncEpicGitHubPriorities();
     }
 
     /**
@@ -206,6 +210,11 @@ class GitHubSyncService
                 'state' => $data['state'],
                 // GitHub Projects の Status フィールド値（着手日自動設定に使用）
                 'project_status' => $data['project_status'] ?? null,
+                // GitHub Projects の Priority フィールド値
+                'project_priority' => $data['project_priority'] ?? null,
+                // GitHub Projects の Start date / Target date フィールド値
+                'project_start_date' => $data['project_start_date'] ?? null,
+                'project_target_date' => $data['project_target_date'] ?? null,
                 'closed_at' => $data['closed_at'] ? Carbon::parse($data['closed_at']) : null,
                 'assignee_login' => $data['assignee'],
                 'sprint_id' => $sprint->id,
@@ -369,6 +378,61 @@ class GitHubSyncService
                 ?? $statuses[0]; // 優先度リストにない値は先頭要素をフォールバック
 
             $epic->update(['github_status' => $githubStatus]);
+        }
+    }
+
+    /**
+     * Issue.project_priority の全ユニーク値を settings の優先度リストに追記する。
+     *
+     * 既存リストに含まれない値は末尾に追加する（既存の順序は変えない）。
+     */
+    private function syncEpicPriorityOptions(): void
+    {
+        $existing = json_decode(
+            Setting::where('key', 'epic_github_priority_order')->value('value') ?? '[]',
+            true
+        );
+
+        $fromIssues = Issue::whereNotNull('project_priority')
+            ->distinct()
+            ->pluck('project_priority')
+            ->toArray();
+
+        $merged = array_values(array_unique(array_merge($existing, $fromIssues)));
+
+        Setting::where('key', 'epic_github_priority_order')
+            ->update(['value' => json_encode($merged)]);
+    }
+
+    /**
+     * 配下 Story の project_priority を優先度順で評価し Epic の github_priority を更新する。
+     *
+     * 優先度リストの先頭に近い優先度を持つ Story が1つでもあれば、その優先度を採用。
+     * project_priority が全て NULL の Epic は github_priority を NULL にリセット。
+     */
+    private function syncEpicGitHubPriorities(): void
+    {
+        $priorityOrder = json_decode(
+            Setting::where('key', 'epic_github_priority_order')->value('value') ?? '[]',
+            true
+        );
+
+        $epics = Epic::with(['issues' => fn ($q) => $q->whereNull('parent_issue_id')])->get();
+
+        foreach ($epics as $epic) {
+            $priorities = $epic->issues->pluck('project_priority')->filter()->unique()->values()->toArray();
+
+            if (empty($priorities)) {
+                $epic->update(['github_priority' => null]);
+
+                continue;
+            }
+
+            // 優先度順に走査し、配下 Story に含まれる最初の優先度を採用
+            $githubPriority = collect($priorityOrder)->first(fn ($p) => in_array($p, $priorities, true))
+                ?? $priorities[0]; // 優先度リストにない値は先頭要素をフォールバック
+
+            $epic->update(['github_priority' => $githubPriority]);
         }
     }
 

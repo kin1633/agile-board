@@ -21,5 +21,12 @@ class SettingSeeder extends Seeder
             ['key' => 'epic_github_status_order'],
             ['value' => json_encode(['In Progress', 'On Hold', 'Todo', 'Cancelled', 'Done'])]
         );
+
+        // Epic の github_priority 集計に使う優先度順リスト（先頭ほど優先度が高い）
+        // GitHub 同期時に未知の値は末尾に自動追加される
+        Setting::firstOrCreate(
+            ['key' => 'epic_github_priority_order'],
+            ['value' => json_encode(['Critical', 'High', 'Medium', 'Low'])]
+        );
     }
 }

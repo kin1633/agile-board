@@ -27,6 +27,9 @@ class EpicController extends Controller
         return Inertia::render('epics/index', [
             'epics' => $epics,
             'estimation' => $estimation,
+            // 設定から取得したステータス・優先度の選択肢（エピックフォームのドロップダウン用）
+            'statusOptions' => json_decode(Setting::where('key', 'epic_github_status_order')->value('value') ?? '[]', true),
+            'priorityOptions' => json_decode(Setting::where('key', 'epic_github_priority_order')->value('value') ?? '[]', true),
         ]);
     }
 
@@ -35,10 +38,11 @@ class EpicController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['required', 'string', 'in:planning,in_progress,done'],
+            // GitHub Projects のカスタム値を使用するため自由入力を許可する
+            'status' => ['required', 'string', 'max:255'],
             'due_date' => ['nullable', 'date'],
             'started_at' => ['nullable', 'date'],
-            'priority' => ['required', 'string', 'in:high,medium,low'],
+            'priority' => ['required', 'string', 'max:255'],
         ]);
 
         Epic::create($validated);
@@ -51,10 +55,11 @@ class EpicController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['required', 'string', 'in:planning,in_progress,done'],
+            // GitHub Projects のカスタム値を使用するため自由入力を許可する
+            'status' => ['required', 'string', 'max:255'],
             'due_date' => ['nullable', 'date'],
             'started_at' => ['nullable', 'date'],
-            'priority' => ['required', 'string', 'in:high,medium,low'],
+            'priority' => ['required', 'string', 'max:255'],
         ]);
 
         $epic->update($validated);
@@ -225,6 +230,9 @@ class EpicController extends Controller
                 'actual_hours' => $storyActual > 0 ? (float) round($storyActual, 2) : null,
                 // 消化率: 実績÷予定×100（予定未設定の場合は null）
                 'completion_rate' => $storyEstimated > 0 ? (int) round($storyActual / $storyEstimated * 100) : null,
+                // GitHub Projects の日程フィールド
+                'project_start_date' => $issue->project_start_date?->toDateString(),
+                'project_target_date' => $issue->project_target_date?->toDateString(),
                 'sub_issues' => $issue->subIssues->map(function ($task) {
                     $taskActual = (float) $task->workLogs->sum('hours');
                     $taskEstimated = $task->estimated_hours !== null ? (float) $task->estimated_hours : null;
@@ -242,6 +250,9 @@ class EpicController extends Controller
                         'completion_rate' => $taskEstimated !== null && $taskEstimated > 0
                             ? (int) round($taskActual / $taskEstimated * 100)
                             : null,
+                        // GitHub Projects の日程フィールド
+                        'project_start_date' => $task->project_start_date?->toDateString(),
+                        'project_target_date' => $task->project_target_date?->toDateString(),
                     ];
                 })->values()->all(),
             ];
@@ -271,10 +282,11 @@ class EpicController extends Controller
             'description' => $epic->description,
             'status' => $epic->status,
             'github_status' => $epic->github_status,
+            'github_priority' => $epic->github_priority,
             'due_date' => $epic->due_date?->toDateString(),
             'started_at' => $epic->started_at?->toDateString(),
             'estimated_start_date' => $estimatedStartDate,
-            'priority' => $epic->priority ?? 'medium',
+            'priority' => $epic->priority ?? '',
             'total_points' => $totalPoints,
             'completed_points' => $completedPoints,
             'open_issues' => $openIssues,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Epic;
 use App\Models\Issue;
+use App\Models\Repository;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -33,6 +34,9 @@ class IssueController extends Controller
                 'assignee_login' => $story->assignee_login,
                 'story_points' => $story->story_points,
                 'epic_id' => $story->epic_id,
+                // GitHub Projects の日程フィールド
+                'project_start_date' => $story->project_start_date?->toDateString(),
+                'project_target_date' => $story->project_target_date?->toDateString(),
                 'repository' => ['full_name' => $story->repository?->full_name ?? ''],
                 'labels' => $story->labels->map(fn ($label) => [
                     'id' => $label->id,
@@ -55,6 +59,9 @@ class IssueController extends Controller
                         'completion_rate' => $taskEstimated !== null && $taskEstimated > 0
                             ? (int) round($taskActual / $taskEstimated * 100)
                             : null,
+                        // GitHub Projects の日程フィールド
+                        'project_start_date' => $task->project_start_date?->toDateString(),
+                        'project_target_date' => $task->project_target_date?->toDateString(),
                         'repository' => ['full_name' => $task->repository?->full_name ?? ''],
                     ];
                 })->values()->all(),
@@ -64,9 +71,15 @@ class IssueController extends Controller
             ->orderBy('title')
             ->get(['id', 'title']);
 
+        // 新規起票タブ: アクティブリポジトリの GitHub 新規イシューリンク用
+        $repositories = Repository::where('active', true)
+            ->orderBy('full_name')
+            ->get(['id', 'owner', 'name', 'full_name']);
+
         return Inertia::render('stories/index', [
             'stories' => $stories,
             'epics' => $epics,
+            'repositories' => $repositories,
         ]);
     }
 

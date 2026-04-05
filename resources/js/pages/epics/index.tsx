@@ -18,6 +18,8 @@ interface EpicTask {
     estimated_hours: number | null;
     actual_hours: number | null;
     completion_rate: number | null;
+    project_start_date: string | null;
+    project_target_date: string | null;
     repository: { full_name: string };
 }
 
@@ -31,6 +33,8 @@ interface EpicStory {
     estimated_hours: number | null;
     actual_hours: number | null;
     completion_rate: number | null;
+    project_start_date: string | null;
+    project_target_date: string | null;
     repository: { full_name: string };
     sub_issues: EpicTask[];
 }
@@ -56,6 +60,8 @@ interface EpicRow {
     actual_hours: number | null;
     /** GitHub Projects の Status フィールド値（同期時に自動設定） */
     github_status: string | null;
+    /** GitHub Projects の Priority フィールド値（同期時に自動設定） */
+    github_priority: string | null;
     issues: EpicStory[];
 }
 
@@ -68,6 +74,10 @@ interface Estimation {
 interface Props {
     epics: EpicRow[];
     estimation: Estimation;
+    /** 設定画面で管理するステータス選択肢（GitHub Projects の値または手動設定値） */
+    statusOptions: string[];
+    /** 設定画面で管理する優先度選択肢（GitHub Projects の値または手動設定値） */
+    priorityOptions: string[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -239,6 +249,12 @@ function EpicCard({
                                 className={`rounded-full border px-2 py-0.5 text-xs font-medium ${GITHUB_STATUS_CLASSES[epic.github_status] ?? 'bg-muted text-muted-foreground'}`}
                             >
                                 {epic.github_status}
+                            </span>
+                        )}
+                        {/* GitHub Projects 優先度バッジ（同期時に自動設定） */}
+                        {epic.github_priority && (
+                            <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                                ★ {epic.github_priority}
                             </span>
                         )}
                         <span className="font-medium">{epic.title}</span>
@@ -442,6 +458,15 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
                     )}
                 </div>
                 <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                    {/* GitHub Projects 開始日・完了目標日 */}
+                    {story.project_start_date && (
+                        <span title="開始日">{story.project_start_date}</span>
+                    )}
+                    {story.project_target_date && (
+                        <span title="完了目標日" className="text-orange-500">
+                            → {story.project_target_date}
+                        </span>
+                    )}
                     {story.assignees.length > 0 && (
                         <span>@{story.assignees.join(', @')}</span>
                     )}
@@ -482,6 +507,20 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
                                 </span>
                             </div>
                             <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                                {/* GitHub Projects 開始日・完了目標日 */}
+                                {task.project_start_date && (
+                                    <span title="開始日">
+                                        {task.project_start_date}
+                                    </span>
+                                )}
+                                {task.project_target_date && (
+                                    <span
+                                        title="完了目標日"
+                                        className="text-orange-500"
+                                    >
+                                        → {task.project_target_date}
+                                    </span>
+                                )}
                                 {task.assignee_login && (
                                     <span>@{task.assignee_login}</span>
                                 )}
@@ -531,7 +570,12 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
     );
 }
 
-export default function EpicsIndex({ epics, estimation }: Props) {
+export default function EpicsIndex({
+    epics,
+    estimation,
+    statusOptions,
+    priorityOptions,
+}: Props) {
     const [showForm, setShowForm] = useState(false);
     const [editingEpic, setEditingEpic] = useState<EpicRow | null>(null);
     const [activeTab, setActiveTab] = useState<TabKey>('with_due');
@@ -733,11 +777,12 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                         }
                                         className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
                                     >
-                                        <option value="planning">計画中</option>
-                                        <option value="in_progress">
-                                            進行中
-                                        </option>
-                                        <option value="done">完了</option>
+                                        {/* 設定画面で管理するステータス選択肢を動的に表示 */}
+                                        {statusOptions.map((opt) => (
+                                            <option key={opt} value={opt}>
+                                                {STATUS_LABELS[opt] ?? opt}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>
@@ -751,9 +796,12 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                         }
                                         className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
                                     >
-                                        <option value="high">高</option>
-                                        <option value="medium">中</option>
-                                        <option value="low">低</option>
+                                        {/* 設定画面で管理する優先度選択肢を動的に表示 */}
+                                        {priorityOptions.map((opt) => (
+                                            <option key={opt} value={opt}>
+                                                {PRIORITY_LABELS[opt] ?? opt}
+                                            </option>
+                                        ))}
                                     </select>
                                     {errors.priority && (
                                         <p className="mt-1 text-xs text-red-500">

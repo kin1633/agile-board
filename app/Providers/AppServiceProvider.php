@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
         {
             public function toResponse($request)
             {
-                return Inertia::render('auth/login');
+                return Inertia::render('auth/login')->toResponse($request);
             }
         });
     }

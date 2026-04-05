@@ -75,12 +75,13 @@ test('エピックが作成できる', function () {
 test('エピック作成時にバリデーションが動作する', function () {
     $user = User::factory()->create();
 
+    // status は GitHub Projects のカスタム値も許容するため文字列であれば有効。title 必須のみチェックする
     $this->actingAs($user)
         ->post(route('epics.store'), [
             'title' => '',
-            'status' => 'invalid_status',
+            'status' => 'any_value',
         ])
-        ->assertSessionHasErrors(['title', 'status']);
+        ->assertSessionHasErrors(['title']);
 });
 
 test('エピックが更新できる', function () {
@@ -117,16 +118,19 @@ test('due_date と priority を指定してエピックを作成できる', func
         ->and($epic->due_date->toDateString())->toBe('2026-06-30');
 });
 
-test('priority が無効値の場合バリデーションエラーになる', function () {
+test('priority は GitHub Projects のカスタム値も許容される', function () {
     $user = User::factory()->create();
 
+    // GitHub Projects のカスタム優先度値（例: Urgent）も受け付けられること
     $this->actingAs($user)
         ->post(route('epics.store'), [
             'title' => 'テスト',
             'status' => 'planning',
-            'priority' => 'urgent', // 無効値
+            'priority' => 'Urgent',
         ])
-        ->assertSessionHasErrors(['priority']);
+        ->assertRedirect(route('epics.index'));
+
+    expect(Epic::where('title', 'テスト')->value('priority'))->toBe('Urgent');
 });
 
 test('due_date が無効な日付の場合バリデーションエラーになる', function () {
@@ -339,5 +343,106 @@ test('github_status がエピック一覧レスポンスに含まれる', functi
         ->get(route('epics.index'))
         ->assertInertia(fn ($page) => $page
             ->where('epics.0.github_status', 'In Progress')
+        );
+});
+
+test('優先度順で github_priority が設定される（High が Low より優先される）', function () {
+    Setting::set('epic_github_priority_order', json_encode(['Critical', 'High', 'Medium', 'Low']));
+
+    $repo = Repository::factory()->create();
+    $epic = Epic::factory()->create(['status' => 'planning']);
+
+    // 配下 Story に Low と High が混在する場合、優先度の高い High が選ばれる
+    Issue::factory()->for($repo)->create(['epic_id' => $epic->id, 'parent_issue_id' => null, 'project_priority' => 'Low']);
+    Issue::factory()->for($repo)->create(['epic_id' => $epic->id, 'parent_issue_id' => null, 'project_priority' => 'High']);
+
+    $service = app(GitHubSyncService::class);
+    $method = new ReflectionMethod($service, 'syncEpicGitHubPriorities');
+    $method->setAccessible(true);
+    $method->invoke($service);
+
+    expect($epic->fresh()->github_priority)->toBe('High')
+        // 手動設定の status は同期後も変わらない
+        ->and($epic->fresh()->status)->toBe('planning');
+});
+
+test('配下 Story に project_priority が存在しない場合 github_priority は null になる', function () {
+    Setting::set('epic_github_priority_order', json_encode(['High', 'Low']));
+
+    $repo = Repository::factory()->create();
+    $epic = Epic::factory()->create(['github_priority' => 'High']);
+
+    // project_priority が未設定の Story のみ存在する場合
+    Issue::factory()->for($repo)->create(['epic_id' => $epic->id, 'parent_issue_id' => null, 'project_priority' => null]);
+
+    $service = app(GitHubSyncService::class);
+    $method = new ReflectionMethod($service, 'syncEpicGitHubPriorities');
+    $method->setAccessible(true);
+    $method->invoke($service);
+
+    expect($epic->fresh()->github_priority)->toBeNull();
+});
+
+test('新しい優先度値は同期時に優先度リスト末尾に追加される', function () {
+    Setting::set('epic_github_priority_order', json_encode(['High', 'Low']));
+
+    $repo = Repository::factory()->create();
+    // 既存リストにない新しい優先度値を持つ Issue を作成
+    Issue::factory()->for($repo)->create(['project_priority' => 'Urgent', 'parent_issue_id' => null]);
+
+    $service = app(GitHubSyncService::class);
+    $method = new ReflectionMethod($service, 'syncEpicPriorityOptions');
+    $method->setAccessible(true);
+    $method->invoke($service);
+
+    $order = json_decode(Setting::where('key', 'epic_github_priority_order')->value('value'), true);
+
+    expect($order)->toContain('Urgent')
+        // 既存の順序は変わらない
+        ->and(array_slice($order, 0, 2))->toBe(['High', 'Low']);
+});
+
+test('github_priority がエピック一覧レスポンスに含まれる', function () {
+    $user = User::factory()->create();
+    Epic::factory()->create(['github_priority' => 'High']);
+
+    $this->actingAs($user)
+        ->get(route('epics.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('epics.0.github_priority', 'High')
+        );
+});
+
+test('project_start_date と project_target_date がエピック内ストーリーのレスポンスに含まれる', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $epic = Epic::factory()->create();
+
+    Issue::factory()->for($repo)->create([
+        'epic_id' => $epic->id,
+        'parent_issue_id' => null,
+        'project_start_date' => '2026-04-01',
+        'project_target_date' => '2026-04-30',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('epics.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('epics.0.issues.0.project_start_date', '2026-04-01')
+            ->where('epics.0.issues.0.project_target_date', '2026-04-30')
+        );
+});
+
+test('statusOptions と priorityOptions がエピック一覧レスポンスに含まれる', function () {
+    Setting::set('epic_github_status_order', json_encode(['In Progress', 'Done']));
+    Setting::set('epic_github_priority_order', json_encode(['High', 'Low']));
+
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('epics.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('statusOptions', ['In Progress', 'Done'])
+            ->where('priorityOptions', ['High', 'Low'])
         );
 });
