@@ -58,6 +58,7 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/retrospectives/{retrospective}', [RetrospectiveController::class, 'destroy'])->name('retrospectives.destroy');
 
     // Issue
+    Route::get('/stories', [IssueController::class, 'index'])->name('issues.index');
     Route::patch('/issues/{issue}', [IssueController::class, 'update'])->name('issues.update');
 
     // GitHub 同期

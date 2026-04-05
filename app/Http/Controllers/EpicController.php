@@ -19,8 +19,8 @@ class EpicController extends Controller
     {
         $estimation = $this->buildEstimation();
 
-        // サブイシュー（タスク）の工数集計のため subIssues を eager load する
-        $epics = Epic::with('issues.subIssues')->get()->map(
+        // GitHub リンク生成のため repository、サブイシューの工数集計のため subIssues を eager load する
+        $epics = Epic::with(['issues.repository', 'issues.subIssues.repository'])->get()->map(
             fn (Epic $epic) => $this->formatEpic($epic, $estimation['team_daily_hours'])
         );
 
@@ -212,6 +212,8 @@ class EpicController extends Controller
 
             return [
                 'id' => $issue->id,
+                'github_issue_number' => $issue->github_issue_number,
+                'repository' => ['full_name' => $issue->repository?->full_name ?? ''],
                 'title' => $issue->title,
                 'state' => $issue->state,
                 // Story の担当者はタスクの担当者を集約して表示する
@@ -222,6 +224,8 @@ class EpicController extends Controller
                 'actual_hours' => $storyActual > 0 ? (float) round($storyActual, 2) : null,
                 'sub_issues' => $issue->subIssues->map(fn ($task) => [
                     'id' => $task->id,
+                    'github_issue_number' => $task->github_issue_number,
+                    'repository' => ['full_name' => $task->repository?->full_name ?? ''],
                     'title' => $task->title,
                     'state' => $task->state,
                     'assignee_login' => $task->assignee_login,

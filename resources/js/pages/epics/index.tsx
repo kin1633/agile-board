@@ -1,5 +1,6 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
+import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import epicRoutes, { exportMethod as exportRoute } from '@/routes/epics';
 import type { BreadcrumbItem } from '@/types';
@@ -7,6 +8,30 @@ import type { BreadcrumbItem } from '@/types';
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'エピック（案件）', href: epicRoutes.index().url },
 ];
+
+interface EpicTask {
+    id: number;
+    github_issue_number: number;
+    title: string;
+    state: string;
+    assignee_login: string | null;
+    estimated_hours: number | null;
+    actual_hours: number | null;
+    repository: { full_name: string };
+}
+
+interface EpicStory {
+    id: number;
+    github_issue_number: number;
+    title: string;
+    state: string;
+    story_points: number | null;
+    assignees: string[];
+    estimated_hours: number | null;
+    actual_hours: number | null;
+    repository: { full_name: string };
+    sub_issues: EpicTask[];
+}
 
 interface EpicRow {
     id: number;
@@ -27,6 +52,7 @@ interface EpicRow {
     estimated_hours: number | null;
     /** タスク工数集計: 配下の全Taskの実績工数合計 */
     actual_hours: number | null;
+    issues: EpicStory[];
 }
 
 interface Estimation {
@@ -120,6 +146,11 @@ function currentMonthRange(): { from: string; to: string } {
     };
 }
 
+/** GitHub Issue へのリンクを生成する */
+function githubUrl(fullName: string, issueNumber: number): string {
+    return `https://github.com/${fullName}/issues/${issueNumber}`;
+}
+
 type SortKey = 'due_date' | 'estimated_hours' | 'priority' | 'none';
 type TabKey = 'with_due' | 'without_due';
 
@@ -149,6 +180,318 @@ function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
         }
         return 0;
     });
+}
+
+/** エピック1行コンポーネント（展開状態を独自管理） */
+function EpicCard({
+    epic,
+    estimation,
+    onEdit,
+    onDelete,
+}: {
+    epic: EpicRow;
+    estimation: Estimation;
+    onEdit: (epic: EpicRow) => void;
+    onDelete: (epic: EpicRow) => void;
+}) {
+    const [expanded, setExpanded] = useState(false);
+
+    const remaining = epic.total_points - epic.completed_points;
+    const progress =
+        epic.total_points > 0
+            ? Math.round((epic.completed_points / epic.total_points) * 100)
+            : 0;
+    const days = epic.due_date ? daysUntilDue(epic.due_date) : null;
+
+    return (
+        <li key={epic.id}>
+            <div className="flex items-start justify-between gap-4 px-6 py-4">
+                <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* 優先度バッジ */}
+                        <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_CLASSES[epic.priority] ?? ''}`}
+                        >
+                            ↑{PRIORITY_LABELS[epic.priority] ?? epic.priority}
+                        </span>
+                        {/* ステータスバッジ */}
+                        <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? ''}`}
+                        >
+                            {STATUS_LABELS[epic.status] ?? epic.status}
+                        </span>
+                        <span className="font-medium">{epic.title}</span>
+                    </div>
+                    {epic.description && (
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                            {epic.description}
+                        </p>
+                    )}
+
+                    {/* リリース予定日 + 残り日数 */}
+                    {epic.due_date && (
+                        <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+                            <span className="text-muted-foreground">
+                                リリース予定:
+                            </span>
+                            <span className="font-medium">{epic.due_date}</span>
+                            {days !== null && (
+                                <span
+                                    className={`rounded px-1.5 py-0.5 font-semibold ${
+                                        days < 0
+                                            ? 'bg-red-100 text-red-600'
+                                            : days <= 7
+                                              ? 'bg-orange-100 text-orange-600'
+                                              : days <= 30
+                                                ? 'bg-yellow-100 text-yellow-600'
+                                                : 'bg-muted text-muted-foreground'
+                                    }`}
+                                >
+                                    {days < 0
+                                        ? `${Math.abs(days)}日超過`
+                                        : days === 0
+                                          ? '本日'
+                                          : `残${days}日`}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {/* 着手日目安（予定工数 ÷ チーム稼働から逆算） */}
+                    {epic.estimated_start_date && (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs">
+                            <span className="text-muted-foreground">
+                                着手日目安:
+                            </span>
+                            <span className="font-medium text-blue-600">
+                                {epic.estimated_start_date}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* 着手日（実績・手動 or 同期時自動設定） */}
+                    {epic.started_at && (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs">
+                            <span className="text-muted-foreground">
+                                着手日:
+                            </span>
+                            <span className="font-medium text-green-600">
+                                {epic.started_at}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* 進捗バー */}
+                    <div className="mt-3 flex items-center gap-3">
+                        <div className="h-2 w-48 overflow-hidden rounded-full bg-muted">
+                            <div
+                                className="h-full rounded-full bg-primary transition-all"
+                                style={{ width: `${progress}%` }}
+                            />
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                            {epic.completed_points} / {epic.total_points} pt (
+                            {progress}%)
+                        </span>
+                    </div>
+
+                    {/* ストーリー展開トグル */}
+                    {epic.issues.length > 0 && (
+                        <button
+                            onClick={() => setExpanded((v) => !v)}
+                            className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                            {expanded ? (
+                                <ChevronDown size={12} />
+                            ) : (
+                                <ChevronRight size={12} />
+                            )}
+                            ストーリー {epic.issues.length} 件
+                        </button>
+                    )}
+                </div>
+
+                {/* 右側の数値 */}
+                <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                    <div className="text-center">
+                        <p className="text-lg font-bold text-foreground">
+                            {epic.open_issues}
+                        </p>
+                        <p className="text-xs">open Issue</p>
+                    </div>
+                    {/* タスク工数トラッキング（実績 / 予定） */}
+                    {(epic.estimated_hours !== null ||
+                        epic.actual_hours !== null) && (
+                        <div className="text-center">
+                            <p className="text-lg font-bold text-foreground">
+                                {epic.actual_hours ?? 0}
+                                <span className="text-sm font-normal text-muted-foreground">
+                                    {' '}
+                                    / {epic.estimated_hours ?? '-'}
+                                </span>
+                            </p>
+                            <p className="text-xs">実績 / 予定 (h)</p>
+                        </div>
+                    )}
+                    <div className="text-center">
+                        <p className="text-lg font-bold text-foreground">
+                            {estimatedSprints(
+                                remaining,
+                                estimation.avg_velocity,
+                            )}
+                        </p>
+                        <p className="text-xs">推定スプリント</p>
+                    </div>
+                    <div className="text-center">
+                        <p className="text-lg font-bold text-foreground">
+                            {estimatedHours(
+                                remaining,
+                                estimation.avg_velocity,
+                                estimation.team_daily_hours,
+                                estimation.default_working_days,
+                            )}
+                        </p>
+                        <p className="text-xs">推定工数 (h)</p>
+                    </div>
+                    <div className="flex gap-1">
+                        <button
+                            onClick={() => onEdit(epic)}
+                            className="rounded px-2 py-1 text-xs hover:bg-muted/50"
+                        >
+                            編集
+                        </button>
+                        <button
+                            onClick={() => onDelete(epic)}
+                            className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50"
+                        >
+                            削除
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* 展開時: ストーリー・タスク一覧 */}
+            {expanded && epic.issues.length > 0 && (
+                <ul className="border-t border-sidebar-border/30 bg-muted/20">
+                    {epic.issues.map((story) => (
+                        <EpicStoryItem key={story.id} story={story} />
+                    ))}
+                </ul>
+            )}
+        </li>
+    );
+}
+
+/** エピック内のストーリー行コンポーネント（タスク展開状態を独自管理） */
+function EpicStoryItem({ story }: { story: EpicStory }) {
+    const [expanded, setExpanded] = useState(false);
+
+    return (
+        <li>
+            {/* ストーリー行 */}
+            <div className="flex items-center justify-between py-2 pr-6 pl-8">
+                <div className="flex min-w-0 items-center gap-2">
+                    {/* タスク展開トグル */}
+                    {story.sub_issues.length > 0 ? (
+                        <button
+                            onClick={() => setExpanded((v) => !v)}
+                            className="shrink-0 text-muted-foreground hover:text-foreground"
+                            aria-label={expanded ? '折り畳む' : '展開する'}
+                        >
+                            {expanded ? (
+                                <ChevronDown size={12} />
+                            ) : (
+                                <ChevronRight size={12} />
+                            )}
+                        </button>
+                    ) : (
+                        <span className="w-3 shrink-0" />
+                    )}
+                    <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${story.state === 'open' ? 'bg-green-500' : 'bg-muted-foreground'}`}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                        #{story.github_issue_number}
+                    </span>
+                    <span className="truncate text-sm">{story.title}</span>
+                    {story.story_points != null && (
+                        <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            {story.story_points} pt
+                        </span>
+                    )}
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                    {story.assignees.length > 0 && (
+                        <span>@{story.assignees.join(', @')}</span>
+                    )}
+                    {story.repository.full_name && (
+                        <a
+                            href={githubUrl(
+                                story.repository.full_name,
+                                story.github_issue_number,
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground"
+                            aria-label="GitHub で開く"
+                        >
+                            <ExternalLink size={13} />
+                        </a>
+                    )}
+                </div>
+            </div>
+
+            {/* タスク一覧（展開時） */}
+            {expanded && story.sub_issues.length > 0 && (
+                <ul className="border-t border-sidebar-border/20 bg-muted/30">
+                    {story.sub_issues.map((task) => (
+                        <li
+                            key={task.id}
+                            className="flex items-center justify-between py-1.5 pr-6 pl-16"
+                        >
+                            <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${task.state === 'open' ? 'bg-green-400' : 'bg-muted-foreground'}`}
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                    #{task.github_issue_number}
+                                </span>
+                                <span className="truncate text-xs">
+                                    {task.title}
+                                </span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                                {task.assignee_login && (
+                                    <span>@{task.assignee_login}</span>
+                                )}
+                                {(task.estimated_hours !== null ||
+                                    task.actual_hours !== null) && (
+                                    <span>
+                                        {task.actual_hours ?? '-'} /{' '}
+                                        {task.estimated_hours ?? '-'} h
+                                    </span>
+                                )}
+                                {task.repository.full_name && (
+                                    <a
+                                        href={githubUrl(
+                                            task.repository.full_name,
+                                            task.github_issue_number,
+                                        )}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-muted-foreground hover:text-foreground"
+                                        aria-label="GitHub で開く"
+                                    >
+                                        <ExternalLink size={11} />
+                                    </a>
+                                )}
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </li>
+    );
 }
 
 export default function EpicsIndex({ epics, estimation }: Props) {
@@ -499,208 +842,15 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                 <div className="rounded-xl border border-sidebar-border/70 bg-card">
                     {displayedEpics.length > 0 ? (
                         <ul className="divide-y divide-sidebar-border/50">
-                            {displayedEpics.map((epic) => {
-                                const remaining =
-                                    epic.total_points - epic.completed_points;
-                                const progress =
-                                    epic.total_points > 0
-                                        ? Math.round(
-                                              (epic.completed_points /
-                                                  epic.total_points) *
-                                                  100,
-                                          )
-                                        : 0;
-                                const days = epic.due_date
-                                    ? daysUntilDue(epic.due_date)
-                                    : null;
-
-                                return (
-                                    <li key={epic.id} className="px-6 py-4">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    {/* 優先度バッジ */}
-                                                    <span
-                                                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_CLASSES[epic.priority] ?? ''}`}
-                                                    >
-                                                        ↑
-                                                        {PRIORITY_LABELS[
-                                                            epic.priority
-                                                        ] ?? epic.priority}
-                                                    </span>
-                                                    {/* ステータスバッジ */}
-                                                    <span
-                                                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? ''}`}
-                                                    >
-                                                        {STATUS_LABELS[
-                                                            epic.status
-                                                        ] ?? epic.status}
-                                                    </span>
-                                                    <span className="font-medium">
-                                                        {epic.title}
-                                                    </span>
-                                                </div>
-                                                {epic.description && (
-                                                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                                                        {epic.description}
-                                                    </p>
-                                                )}
-
-                                                {/* リリース予定日 + 残り日数 */}
-                                                {epic.due_date && (
-                                                    <div className="mt-1.5 flex items-center gap-1.5 text-xs">
-                                                        <span className="text-muted-foreground">
-                                                            リリース予定:
-                                                        </span>
-                                                        <span className="font-medium">
-                                                            {epic.due_date}
-                                                        </span>
-                                                        {days !== null && (
-                                                            <span
-                                                                className={`rounded px-1.5 py-0.5 font-semibold ${
-                                                                    days < 0
-                                                                        ? 'bg-red-100 text-red-600'
-                                                                        : days <=
-                                                                            7
-                                                                          ? 'bg-orange-100 text-orange-600'
-                                                                          : days <=
-                                                                              30
-                                                                            ? 'bg-yellow-100 text-yellow-600'
-                                                                            : 'bg-muted text-muted-foreground'
-                                                                }`}
-                                                            >
-                                                                {days < 0
-                                                                    ? `${Math.abs(days)}日超過`
-                                                                    : days === 0
-                                                                      ? '本日'
-                                                                      : `残${days}日`}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* 着手日目安（予定工数 ÷ チーム稼働から逆算） */}
-                                                {epic.estimated_start_date && (
-                                                    <div className="mt-1 flex items-center gap-1.5 text-xs">
-                                                        <span className="text-muted-foreground">
-                                                            着手日目安:
-                                                        </span>
-                                                        <span className="font-medium text-blue-600">
-                                                            {
-                                                                epic.estimated_start_date
-                                                            }
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {/* 着手日（実績・手動 or 同期時自動設定） */}
-                                                {epic.started_at && (
-                                                    <div className="mt-1 flex items-center gap-1.5 text-xs">
-                                                        <span className="text-muted-foreground">
-                                                            着手日:
-                                                        </span>
-                                                        <span className="font-medium text-green-600">
-                                                            {epic.started_at}
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {/* 進捗バー */}
-                                                <div className="mt-3 flex items-center gap-3">
-                                                    <div className="h-2 w-48 overflow-hidden rounded-full bg-muted">
-                                                        <div
-                                                            className="h-full rounded-full bg-primary transition-all"
-                                                            style={{
-                                                                width: `${progress}%`,
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {epic.completed_points}{' '}
-                                                        / {epic.total_points} pt
-                                                        ({progress}%)
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            {/* 右側の数値 */}
-                                            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                                                <div className="text-center">
-                                                    <p className="text-lg font-bold text-foreground">
-                                                        {epic.open_issues}
-                                                    </p>
-                                                    <p className="text-xs">
-                                                        open Issue
-                                                    </p>
-                                                </div>
-                                                {/* タスク工数トラッキング（実績 / 予定） */}
-                                                {(epic.estimated_hours !==
-                                                    null ||
-                                                    epic.actual_hours !==
-                                                        null) && (
-                                                    <div className="text-center">
-                                                        <p className="text-lg font-bold text-foreground">
-                                                            {epic.actual_hours ??
-                                                                0}
-                                                            <span className="text-sm font-normal text-muted-foreground">
-                                                                {' '}
-                                                                /{' '}
-                                                                {epic.estimated_hours ??
-                                                                    '-'}
-                                                            </span>
-                                                        </p>
-                                                        <p className="text-xs">
-                                                            実績 / 予定 (h)
-                                                        </p>
-                                                    </div>
-                                                )}
-                                                <div className="text-center">
-                                                    <p className="text-lg font-bold text-foreground">
-                                                        {estimatedSprints(
-                                                            remaining,
-                                                            estimation.avg_velocity,
-                                                        )}
-                                                    </p>
-                                                    <p className="text-xs">
-                                                        推定スプリント
-                                                    </p>
-                                                </div>
-                                                <div className="text-center">
-                                                    <p className="text-lg font-bold text-foreground">
-                                                        {estimatedHours(
-                                                            remaining,
-                                                            estimation.avg_velocity,
-                                                            estimation.team_daily_hours,
-                                                            estimation.default_working_days,
-                                                        )}
-                                                    </p>
-                                                    <p className="text-xs">
-                                                        推定工数 (h)
-                                                    </p>
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    <button
-                                                        onClick={() =>
-                                                            openEdit(epic)
-                                                        }
-                                                        className="rounded px-2 py-1 text-xs hover:bg-muted/50"
-                                                    >
-                                                        編集
-                                                    </button>
-                                                    <button
-                                                        onClick={() =>
-                                                            handleDelete(epic)
-                                                        }
-                                                        className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50"
-                                                    >
-                                                        削除
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </li>
-                                );
-                            })}
+                            {displayedEpics.map((epic) => (
+                                <EpicCard
+                                    key={epic.id}
+                                    epic={epic}
+                                    estimation={estimation}
+                                    onEdit={openEdit}
+                                    onDelete={handleDelete}
+                                />
+                            ))}
                         </ul>
                     ) : (
                         <p className="px-6 py-4 text-sm text-muted-foreground">

@@ -2,12 +2,39 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Epic;
 use App\Models\Issue;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class IssueController extends Controller
 {
+    /**
+     * ストーリー（親イシュー）一覧をエピック・サブイシューとともに返す。
+     *
+     * parent_issue_id IS NULL のイシューをストーリーとして扱い、
+     * サブイシュー（タスク）を eager load して階層構造で表示する。
+     */
+    public function index(): Response
+    {
+        $stories = Issue::query()
+            ->whereNull('parent_issue_id')
+            ->with(['repository', 'epic', 'subIssues.repository', 'labels'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $epics = Epic::query()
+            ->orderBy('title')
+            ->get(['id', 'title']);
+
+        return Inertia::render('stories/index', [
+            'stories' => $stories,
+            'epics' => $epics,
+        ]);
+    }
+
     /**
      * Issue のアプリ側管理フィールドを更新する。
      *

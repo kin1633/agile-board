@@ -6,6 +6,7 @@ import {
     FolderGit2,
     LayoutGrid,
     Layers,
+    ListChecks,
     Settings,
     RotateCcw,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import { dashboard } from '@/routes';
 import milestones from '@/routes/milestones';
 import sprints from '@/routes/sprints';
 import epics from '@/routes/epics';
+import issues from '@/routes/issues';
 import retrospectives from '@/routes/retrospectives';
 import { general, repositories, members, labels } from '@/routes/settings';
 import type { NavItem } from '@/types';
@@ -50,6 +52,11 @@ const mainNavItems: NavItem[] = [
         title: 'エピック（案件）',
         href: epics.index(),
         icon: Layers,
+    },
+    {
+        title: 'ストーリー・タスク',
+        href: issues.index().url,
+        icon: ListChecks,
     },
     {
         title: 'レトロスペクティブ',
