@@ -15,8 +15,12 @@ class MilestoneFactory extends Factory
      */
     public function definition(): array
     {
-        $year = fake()->numberBetween(2025, 2027);
-        $month = fake()->numberBetween(1, 12);
+        // ランダム生成では同一テスト内で year/month が重複し UNIQUE 制約違反になるため
+        // 静的カウンタで連番採番して衝突を防ぐ
+        static $counter = 0;
+        $counter++;
+        $year = 2020 + intdiv($counter - 1, 12);
+        $month = (($counter - 1) % 12) + 1;
 
         return [
             'year' => $year,
