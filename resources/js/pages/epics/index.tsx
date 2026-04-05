@@ -252,20 +252,20 @@ function EpicCard({
                                 ↑{epic.github_priority}
                             </span>
                         )}
-                        {/* GitHub Projects ステータスバッジ（同期時に自動設定・GitHub 色を使用） */}
-                        {epic.github_status && (
+                        {/* ステータスバッジ: GitHub 同期済みなら github_status を優先、未同期ならアプリ手動値を表示 */}
+                        {epic.github_status ? (
                             <span
                                 className={`rounded-full border px-2 py-0.5 text-xs font-medium ${githubColorToTailwind(statusColors[epic.github_status])}`}
                             >
                                 {epic.github_status}
                             </span>
+                        ) : (
+                            <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? 'bg-muted text-muted-foreground'}`}
+                            >
+                                {STATUS_LABELS[epic.status] ?? epic.status}
+                            </span>
                         )}
-                        {/* アプリ手動ステータスバッジ（GitHub 同期後も独立して管理） */}
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? 'bg-muted text-muted-foreground'}`}
-                        >
-                            {STATUS_LABELS[epic.status] ?? epic.status}
-                        </span>
                         <span className="font-medium">{epic.title}</span>
                     </div>
                     {epic.description && (
