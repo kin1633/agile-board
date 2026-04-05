@@ -472,17 +472,18 @@ export default function WorkLogsIndex({
                         selectMirror={true}
                         editable={true}
                         slotMinTime="07:00:00"
-                        slotMaxTime="22:00:00"
+                        slotMaxTime="23:00:00"
                         slotDuration="00:15:00"
                         slotLabelInterval="01:00:00"
                         allDaySlot={false}
                         nowIndicator={true}
+                        scrollTime="09:00:00"
                         events={calendarEvents}
                         select={handleSelect}
                         eventClick={handleEventClick}
                         eventResize={handleEventResize}
                         eventDrop={handleEventDrop}
-                        height="auto"
+                        height="80vh"
                         locale="ja"
                         eventTimeFormat={{
                             hour: '2-digit',
