@@ -3,6 +3,7 @@ import {
     BookOpen,
     Clock,
     ClipboardList,
+    CalendarCheck,
     Flag,
     FolderGit2,
     LayoutGrid,
@@ -31,6 +32,7 @@ import epics from '@/routes/epics';
 import issues from '@/routes/issues';
 import retrospectives from '@/routes/retrospectives';
 import workLogs from '@/routes/work-logs';
+import attendanceRoutes from '@/routes/attendance';
 import { general, repositories, members, labels } from '@/routes/settings';
 import type { NavItem } from '@/types';
 
@@ -69,6 +71,11 @@ const mainNavItems: NavItem[] = [
         title: '実績入力',
         href: workLogs.index().url,
         icon: Clock,
+    },
+    {
+        title: '勤怠管理',
+        href: attendanceRoutes.index().url,
+        icon: CalendarCheck,
     },
     {
         title: '設定',

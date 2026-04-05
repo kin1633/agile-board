@@ -96,52 +96,6 @@ function weekRangeLabel(weekStart: string): string {
     return `${start.getFullYear()}年 ${fmt(start)} 〜 ${fmt(end)}`;
 }
 
-/**
- * 日本の国民の祝日セット（2025〜2026年）。
- * 春分・秋分は年により±1日ずれる場合があるため概算値。
- */
-const JAPANESE_HOLIDAYS = new Set([
-    // 2025年
-    '2025-01-01',
-    '2025-01-13',
-    '2025-02-11',
-    '2025-02-23',
-    '2025-02-24',
-    '2025-03-20',
-    '2025-04-29',
-    '2025-05-03',
-    '2025-05-04',
-    '2025-05-05',
-    '2025-05-06',
-    '2025-07-21',
-    '2025-08-11',
-    '2025-09-15',
-    '2025-09-23',
-    '2025-10-13',
-    '2025-11-03',
-    '2025-11-23',
-    '2025-11-24',
-    // 2026年
-    '2026-01-01',
-    '2026-01-12',
-    '2026-02-11',
-    '2026-02-23',
-    '2026-03-20',
-    '2026-04-29',
-    '2026-05-03',
-    '2026-05-04',
-    '2026-05-05',
-    '2026-05-06',
-    '2026-07-20',
-    '2026-08-11',
-    '2026-09-21',
-    '2026-09-22',
-    '2026-09-23',
-    '2026-10-12',
-    '2026-11-03',
-    '2026-11-23',
-]);
-
 /** Date オブジェクトから HH:mm 文字列を生成する */
 function toHHMM(date: Date): string {
     const h = String(date.getHours()).padStart(2, '0');
@@ -191,6 +145,11 @@ interface MemberOption {
     display_name: string;
 }
 
+interface HolidayEntry {
+    date: string;
+    name: string;
+}
+
 interface Props {
     logs: WorkLogRow[];
     epics: EpicOption[];
@@ -199,6 +158,7 @@ interface Props {
     members: MemberOption[];
     currentMemberId: number | null;
     filters: { week_start: string; member_id: number | null };
+    holidays: HolidayEntry[];
 }
 
 interface FormData {
@@ -233,6 +193,7 @@ export default function WorkLogsIndex({
     members,
     currentMemberId,
     filters,
+    holidays,
 }: Props) {
     const [showModal, setShowModal] = React.useState(false);
     const [editingLog, setEditingLog] = React.useState<WorkLogRow | null>(null);
@@ -410,6 +371,9 @@ export default function WorkLogsIndex({
         ? stories.filter((s) => s.epic_id === Number(data.epic_id))
         : stories;
 
+    /** DBから受け取った祝日リストで休日判定する */
+    const isHoliday = (date: string) => holidays.some((h) => h.date === date);
+
     /**
      * 土日・祝日の列に背景色を付けるバックグラウンドイベント。
      * 土曜=青系、日曜・祝日=赤系で色分けする。
@@ -421,7 +385,7 @@ export default function WorkLogsIndex({
             date,
             isSat: dow === 6,
             isSun: dow === 0,
-            isHol: JAPANESE_HOLIDAYS.has(date),
+            isHol: isHoliday(date),
         };
     })
         .filter(({ isSat, isSun, isHol }) => isSat || isSun || isHol)
@@ -431,8 +395,8 @@ export default function WorkLogsIndex({
             display: 'background',
             backgroundColor:
                 isSun || isHol
-                    ? 'rgba(254,226,226,0.5)'
-                    : 'rgba(219,234,254,0.5)',
+                    ? 'rgba(254,226,226,0.75)'
+                    : 'rgba(219,234,254,0.75)',
         }));
 
     /** WorkLogRow を FullCalendar の EventInput に変換する（日付は log.date を使用） */
@@ -560,6 +524,19 @@ export default function WorkLogsIndex({
                         nowIndicator={true}
                         scrollTime="09:00:00"
                         events={[...calendarEvents, ...backgroundEvents]}
+                        dayHeaderDidMount={(arg) => {
+                            const dateStr = localDateString(arg.date);
+                            const dow = arg.date.getDay();
+                            const isSat = dow === 6;
+                            const isSun = dow === 0;
+                            const isHol = isHoliday(dateStr);
+                            if (isSat || isSun || isHol) {
+                                arg.el.style.backgroundColor =
+                                    isSun || isHol
+                                        ? 'rgba(254,226,226,0.75)'
+                                        : 'rgba(219,234,254,0.75)';
+                            }
+                        }}
                         select={handleSelect}
                         eventClick={handleEventClick}
                         eventResize={handleEventResize}

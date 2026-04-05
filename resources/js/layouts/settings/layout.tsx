@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
-import { general, repositories, members, labels } from '@/routes/settings';
+import {
+    general,
+    repositories,
+    members,
+    labels,
+    holidays,
+} from '@/routes/settings';
 import type { NavItem } from '@/types';
 
 const sidebarNavItems: NavItem[] = [
@@ -27,6 +33,11 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'ラベル',
         href: labels(),
+        icon: null,
+    },
+    {
+        title: '休日設定',
+        href: holidays(),
         icon: null,
     },
 ];

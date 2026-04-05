@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AttendanceLogController;
 use App\Http\Controllers\Auth\GitHubController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\DashboardController;
@@ -67,6 +68,12 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/work-logs', [WorkLogController::class, 'store'])->name('work-logs.store');
     Route::put('/work-logs/{workLog}', [WorkLogController::class, 'update'])->name('work-logs.update');
     Route::delete('/work-logs/{workLog}', [WorkLogController::class, 'destroy'])->name('work-logs.destroy');
+
+    // 勤怠管理
+    Route::get('/attendance', [AttendanceLogController::class, 'index'])->name('attendance.index');
+    Route::post('/attendance', [AttendanceLogController::class, 'store'])->name('attendance.store');
+    Route::put('/attendance/{attendanceLog}', [AttendanceLogController::class, 'update'])->name('attendance.update');
+    Route::delete('/attendance/{attendanceLog}', [AttendanceLogController::class, 'destroy'])->name('attendance.destroy');
 
     // GitHub 同期
     Route::post('/sync', SyncController::class)->name('sync');

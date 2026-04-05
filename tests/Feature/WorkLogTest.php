@@ -25,6 +25,7 @@ test('実績入力一覧が表示される', function () {
             ->has('tasks')
             ->has('members')
             ->has('filters')
+            ->has('holidays')
         );
 });
 

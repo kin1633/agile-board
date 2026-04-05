@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\GeneralController;
+use App\Http\Controllers\Settings\HolidayController;
 use App\Http\Controllers\Settings\LabelController;
 use App\Http\Controllers\Settings\MemberController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -29,6 +30,12 @@ Route::middleware(['auth'])->group(function () {
     // ラベル管理
     Route::get('settings/labels', [LabelController::class, 'index'])->name('settings.labels');
     Route::patch('settings/labels/{label}', [LabelController::class, 'update'])->name('settings.labels.update');
+
+    // 休日管理（国民の祝日インポート・現場独自休日のCRUD）
+    Route::get('settings/holidays', [HolidayController::class, 'index'])->name('settings.holidays');
+    Route::post('settings/holidays/import', [HolidayController::class, 'import'])->name('settings.holidays.import');
+    Route::post('settings/holidays', [HolidayController::class, 'store'])->name('settings.holidays.store');
+    Route::delete('settings/holidays/{holiday}', [HolidayController::class, 'destroy'])->name('settings.holidays.destroy');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');

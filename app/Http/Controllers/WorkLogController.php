@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Epic;
+use App\Models\Holiday;
 use App\Models\Issue;
 use App\Models\Member;
 use App\Models\WorkLog;
@@ -68,6 +69,14 @@ class WorkLogController extends Controller
         // デフォルトのメンバーID: ログインユーザーに紐づくメンバー
         $currentMemberId = Member::where('user_id', Auth::id())->value('id');
 
+        // 当週の祝日をDBから取得してフロントへ渡す（JAPANESE_HOLIDAYS ハードコードを廃止）
+        $holidays = Holiday::whereBetween('date', [$weekStart, $weekEnd])
+            ->get(['date', 'name'])
+            ->map(fn (Holiday $h) => [
+                'date' => $h->date->toDateString(),
+                'name' => $h->name,
+            ]);
+
         return Inertia::render('work-logs/index', [
             'logs' => $logs,
             'epics' => $epics,
@@ -76,6 +85,7 @@ class WorkLogController extends Controller
             'members' => $members,
             'currentMemberId' => $currentMemberId,
             'filters' => ['week_start' => $weekStart, 'member_id' => $memberId],
+            'holidays' => $holidays,
         ]);
     }
 
