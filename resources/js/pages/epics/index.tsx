@@ -142,10 +142,10 @@ function currentMonthRange(): { from: string; to: string } {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return {
-        from: from.toISOString().slice(0, 10),
-        to: to.toISOString().slice(0, 10),
-    };
+    // toISOString() は UTC 変換されるため JST 環境で日付がずれる。ローカル日付を使う。
+    const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { from: fmt(from), to: fmt(to) };
 }
 
 /** GitHub Issue へのリンクを生成する */
