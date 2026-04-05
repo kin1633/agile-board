@@ -13,12 +13,14 @@ return new class extends Migration
     {
         Schema::create('sprints', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('milestone_id')->unique()->constrained()->cascadeOnDelete();
+            // milestone と iteration の両方に対応するため nullable + nullOnDelete
+            $table->foreignId('milestone_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('github_iteration_id')->nullable()->unique(); // GitHub Projects iteration ID
             $table->string('title');
-            // start_dateは新規作成時にdue_onの8日前を自動計算。既存レコードは同期時に上書きしない
             $table->date('start_date');
-            $table->date('end_date'); // milestones.due_on と同値
+            $table->date('end_date');
             $table->integer('working_days')->default(5); // 稼働日数（祝日週は手動変更可）
+            $table->unsignedInteger('iteration_duration_days')->nullable(); // GitHub iteration の日数
             $table->string('state')->default('open');
             $table->timestamps();
         });

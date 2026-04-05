@@ -16,6 +16,8 @@ return new class extends Migration
             $table->foreignId('repository_id')->constrained()->cascadeOnDelete();
             $table->foreignId('sprint_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('epic_id')->nullable()->constrained()->nullOnDelete();
+            // 親issueへの自己参照（サブissue機能）
+            $table->foreignId('parent_issue_id')->nullable()->constrained('issues')->nullOnDelete();
             $table->integer('github_issue_number');
             $table->string('title');
             $table->string('state')->default('open');
@@ -23,6 +25,10 @@ return new class extends Migration
             // story_points / exclude_velocity は同期時に既存値を保護（上書きしない）
             $table->integer('story_points')->nullable();
             $table->boolean('exclude_velocity')->default(false);
+            $table->string('project_status')->nullable(); // GitHub Projects のステータスフィールド値
+            $table->decimal('estimated_hours', 8, 2)->nullable(); // 見積もり時間（手動入力）
+            $table->decimal('actual_hours', 8, 2)->nullable(); // 実績時間（手動入力）
+            $table->timestamp('closed_at')->nullable();
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
 
