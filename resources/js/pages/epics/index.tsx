@@ -54,6 +54,8 @@ interface EpicRow {
     estimated_hours: number | null;
     /** タスク工数集計: 配下の全Taskの実績工数合計 */
     actual_hours: number | null;
+    /** GitHub Projects の Status フィールド値（同期時に自動設定） */
+    github_status: string | null;
     issues: EpicStory[];
 }
 
@@ -78,6 +80,15 @@ const STATUS_CLASSES: Record<string, string> = {
     planning: 'bg-muted text-muted-foreground',
     in_progress: 'bg-blue-100 text-blue-700',
     done: 'bg-green-100 text-green-700',
+};
+
+/** GitHub Projects の Status バッジスタイル（英語値そのまま表示） */
+const GITHUB_STATUS_CLASSES: Record<string, string> = {
+    Todo: 'bg-gray-100 text-gray-600',
+    'In Progress': 'bg-blue-100 text-blue-700',
+    Done: 'bg-green-100 text-green-700',
+    'On Hold': 'bg-yellow-100 text-yellow-700',
+    Cancelled: 'bg-red-100 text-red-600',
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -222,6 +233,14 @@ function EpicCard({
                         >
                             {STATUS_LABELS[epic.status] ?? epic.status}
                         </span>
+                        {/* GitHub Projects ステータスバッジ（同期時に自動設定） */}
+                        {epic.github_status && (
+                            <span
+                                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${GITHUB_STATUS_CLASSES[epic.github_status] ?? 'bg-muted text-muted-foreground'}`}
+                            >
+                                {epic.github_status}
+                            </span>
+                        )}
                         <span className="font-medium">{epic.title}</span>
                     </div>
                     {epic.description && (

@@ -270,6 +270,7 @@ class EpicController extends Controller
             'title' => $epic->title,
             'description' => $epic->description,
             'status' => $epic->status,
+            'github_status' => $epic->github_status,
             'due_date' => $epic->due_date?->toDateString(),
             'started_at' => $epic->started_at?->toDateString(),
             'estimated_start_date' => $estimatedStartDate,

@@ -76,6 +76,10 @@ class GitHubSyncService
 
         // Issue の project_status を元に Epic の started_at を自動設定する
         $this->syncEpicStartDates();
+        // 未知のステータス値を優先度リストへ先に追記する
+        $this->syncEpicStatusOptions();
+        // 優先度リストを使って Epic の github_status を集計する
+        $this->syncEpicGitHubStatuses();
     }
 
     /**
@@ -310,6 +314,61 @@ class GitHubSyncService
             if ($hasInProgress) {
                 $epic->update(['started_at' => now()->toDateString()]);
             }
+        }
+    }
+
+    /**
+     * Issue.project_status の全ユニーク値を settings の優先度リストに追記する。
+     *
+     * 既存リストに含まれない値は末尾に追加する（既存の順序は変えない）。
+     */
+    private function syncEpicStatusOptions(): void
+    {
+        $existing = json_decode(
+            Setting::where('key', 'epic_github_status_order')->value('value') ?? '[]',
+            true
+        );
+
+        $fromIssues = Issue::whereNotNull('project_status')
+            ->distinct()
+            ->pluck('project_status')
+            ->toArray();
+
+        $merged = array_values(array_unique(array_merge($existing, $fromIssues)));
+
+        Setting::where('key', 'epic_github_status_order')
+            ->update(['value' => json_encode($merged)]);
+    }
+
+    /**
+     * 配下 Story の project_status を優先度順で評価し Epic の github_status を更新する。
+     *
+     * 優先度リストの先頭に近いステータスを持つ Story が1つでもあれば、そのステータスを採用。
+     * project_status が全て NULL の Epic は github_status を NULL にリセット。
+     */
+    private function syncEpicGitHubStatuses(): void
+    {
+        $priorityOrder = json_decode(
+            Setting::where('key', 'epic_github_status_order')->value('value') ?? '[]',
+            true
+        );
+
+        $epics = Epic::with(['issues' => fn ($q) => $q->whereNull('parent_issue_id')])->get();
+
+        foreach ($epics as $epic) {
+            $statuses = $epic->issues->pluck('project_status')->filter()->unique()->values()->toArray();
+
+            if (empty($statuses)) {
+                $epic->update(['github_status' => null]);
+
+                continue;
+            }
+
+            // 優先度順に走査し、配下 Story に含まれる最初のステータスを採用
+            $githubStatus = collect($priorityOrder)->first(fn ($s) => in_array($s, $statuses, true))
+                ?? $statuses[0]; // 優先度リストにない値は先頭要素をフォールバック
+
+            $epic->update(['github_status' => $githubStatus]);
         }
     }
 

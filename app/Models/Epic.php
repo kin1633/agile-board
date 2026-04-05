@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['title', 'description', 'status', 'due_date', 'priority', 'started_at'])]
+#[Fillable(['title', 'description', 'status', 'github_status', 'due_date', 'priority', 'started_at'])]
 class Epic extends Model
 {
     use HasFactory;

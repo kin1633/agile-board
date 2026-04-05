@@ -5,9 +5,11 @@ use App\Models\Issue;
 use App\Models\Member;
 use App\Models\Milestone;
 use App\Models\Repository;
+use App\Models\Setting;
 use App\Models\Sprint;
 use App\Models\User;
 use App\Models\WorkLog;
+use App\Services\GitHubSyncService;
 
 test('未認証ユーザーはエピック一覧にアクセスできない', function () {
     $this->get(route('epics.index'))->assertRedirect(route('login'));
@@ -252,5 +254,90 @@ test('タスクの actual_hours がワークログの合計で集計される', 
             // completion_rate = 3.5 / 4.0 * 100 = 88
             ->where('epics.0.issues.0.sub_issues.0.actual_hours', 3.5)
             ->where('epics.0.issues.0.sub_issues.0.completion_rate', 88)
+        );
+});
+
+test('優先度順で github_status が設定される（In Progress が Todo より優先される）', function () {
+    Setting::set('epic_github_status_order', json_encode(['In Progress', 'On Hold', 'Todo', 'Cancelled', 'Done']));
+
+    $repo = Repository::factory()->create();
+    $epic = Epic::factory()->create(['status' => 'planning']);
+
+    // 配下 Story に Todo と In Progress が混在する場合、優先度の高い In Progress が選ばれる
+    Issue::factory()->for($repo)->create(['epic_id' => $epic->id, 'parent_issue_id' => null, 'project_status' => 'Todo']);
+    Issue::factory()->for($repo)->create(['epic_id' => $epic->id, 'parent_issue_id' => null, 'project_status' => 'In Progress']);
+
+    $service = app(GitHubSyncService::class);
+    $method = new ReflectionMethod($service, 'syncEpicGitHubStatuses');
+    $method->setAccessible(true);
+    $method->invoke($service);
+
+    expect($epic->fresh()->github_status)->toBe('In Progress')
+        // 手動設定の status は同期後も変わらない
+        ->and($epic->fresh()->status)->toBe('planning');
+});
+
+test('配下 Story に project_status が存在しない場合 github_status は null になる', function () {
+    Setting::set('epic_github_status_order', json_encode(['In Progress', 'Done']));
+
+    $repo = Repository::factory()->create();
+    $epic = Epic::factory()->create(['github_status' => 'In Progress']);
+
+    // project_status が未設定の Story のみ存在する場合
+    Issue::factory()->for($repo)->create(['epic_id' => $epic->id, 'parent_issue_id' => null, 'project_status' => null]);
+
+    $service = app(GitHubSyncService::class);
+    $method = new ReflectionMethod($service, 'syncEpicGitHubStatuses');
+    $method->setAccessible(true);
+    $method->invoke($service);
+
+    expect($epic->fresh()->github_status)->toBeNull();
+});
+
+test('優先度リストにないステータスは先頭の Story ステータスをフォールバックとして採用する', function () {
+    Setting::set('epic_github_status_order', json_encode(['In Progress', 'Done']));
+
+    $repo = Repository::factory()->create();
+    $epic = Epic::factory()->create();
+
+    // 優先度リストに存在しないカスタムステータスのみ
+    Issue::factory()->for($repo)->create(['epic_id' => $epic->id, 'parent_issue_id' => null, 'project_status' => 'Custom Status']);
+
+    $service = app(GitHubSyncService::class);
+    $method = new ReflectionMethod($service, 'syncEpicGitHubStatuses');
+    $method->setAccessible(true);
+    $method->invoke($service);
+
+    // 優先度リストにない値はフォールバックとして最初のステータスが採用される
+    expect($epic->fresh()->github_status)->toBe('Custom Status');
+});
+
+test('新しいステータス値は同期時に優先度リスト末尾に追加される', function () {
+    Setting::set('epic_github_status_order', json_encode(['In Progress', 'Done']));
+
+    $repo = Repository::factory()->create();
+    // 既存リストにない新しいステータス値を持つ Issue を作成
+    Issue::factory()->for($repo)->create(['project_status' => 'Custom Status', 'parent_issue_id' => null]);
+
+    $service = app(GitHubSyncService::class);
+    $method = new ReflectionMethod($service, 'syncEpicStatusOptions');
+    $method->setAccessible(true);
+    $method->invoke($service);
+
+    $order = json_decode(Setting::where('key', 'epic_github_status_order')->value('value'), true);
+
+    expect($order)->toContain('Custom Status')
+        // 既存の順序は変わらない
+        ->and(array_slice($order, 0, 2))->toBe(['In Progress', 'Done']);
+});
+
+test('github_status がエピック一覧レスポンスに含まれる', function () {
+    $user = User::factory()->create();
+    Epic::factory()->create(['github_status' => 'In Progress']);
+
+    $this->actingAs($user)
+        ->get(route('epics.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('epics.0.github_status', 'In Progress')
         );
 });
