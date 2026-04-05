@@ -9,6 +9,7 @@ use App\Http\Controllers\MilestoneController;
 use App\Http\Controllers\RetrospectiveController;
 use App\Http\Controllers\SprintController;
 use App\Http\Controllers\SyncController;
+use App\Http\Controllers\WorkLogController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -60,6 +61,12 @@ Route::middleware(['auth'])->group(function () {
     // Issue
     Route::get('/stories', [IssueController::class, 'index'])->name('issues.index');
     Route::patch('/issues/{issue}', [IssueController::class, 'update'])->name('issues.update');
+
+    // ワークログ（日次実績入力）
+    Route::get('/work-logs', [WorkLogController::class, 'index'])->name('work-logs.index');
+    Route::post('/work-logs', [WorkLogController::class, 'store'])->name('work-logs.store');
+    Route::put('/work-logs/{workLog}', [WorkLogController::class, 'update'])->name('work-logs.update');
+    Route::delete('/work-logs/{workLog}', [WorkLogController::class, 'destroy'])->name('work-logs.destroy');
 
     // GitHub 同期
     Route::post('/sync', SyncController::class)->name('sync');

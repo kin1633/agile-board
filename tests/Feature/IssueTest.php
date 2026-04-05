@@ -63,32 +63,6 @@ test('Issue の予定工数を更新できる', function () {
     expect((float) $issue->fresh()->estimated_hours)->toBe(8.5);
 });
 
-test('Issue の実績工数を更新できる', function () {
-    $user = User::factory()->create();
-    $repo = Repository::factory()->create();
-    $issue = Issue::factory()->for($repo)->create(['actual_hours' => null]);
-
-    $this->actingAs($user)
-        ->patch(route('issues.update', $issue), ['actual_hours' => 6.0])
-        ->assertRedirect();
-
-    expect((float) $issue->fresh()->actual_hours)->toBe(6.0);
-});
-
-test('予定工数と実績工数を同時に更新できる', function () {
-    $user = User::factory()->create();
-    $repo = Repository::factory()->create();
-    $issue = Issue::factory()->for($repo)->create(['estimated_hours' => null, 'actual_hours' => null]);
-
-    $this->actingAs($user)
-        ->patch(route('issues.update', $issue), ['estimated_hours' => 4.0, 'actual_hours' => 3.5])
-        ->assertRedirect();
-
-    $fresh = $issue->fresh();
-    expect((float) $fresh->estimated_hours)->toBe(4.0);
-    expect((float) $fresh->actual_hours)->toBe(3.5);
-});
-
 test('予定工数に null を指定してリセットできる', function () {
     $user = User::factory()->create();
     $repo = Repository::factory()->create();

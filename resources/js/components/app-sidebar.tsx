@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import {
     BookOpen,
+    Clock,
     ClipboardList,
     Flag,
     FolderGit2,
@@ -29,6 +30,7 @@ import sprints from '@/routes/sprints';
 import epics from '@/routes/epics';
 import issues from '@/routes/issues';
 import retrospectives from '@/routes/retrospectives';
+import workLogs from '@/routes/work-logs';
 import { general, repositories, members, labels } from '@/routes/settings';
 import type { NavItem } from '@/types';
 
@@ -62,6 +64,11 @@ const mainNavItems: NavItem[] = [
         title: 'レトロスペクティブ',
         href: retrospectives.index(),
         icon: RotateCcw,
+    },
+    {
+        title: '実績入力',
+        href: workLogs.index().url,
+        icon: Clock,
     },
     {
         title: '設定',

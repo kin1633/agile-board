@@ -7,6 +7,7 @@ use App\Models\Milestone;
 use App\Models\Repository;
 use App\Models\Sprint;
 use App\Models\User;
+use App\Models\WorkLog;
 
 test('未認証ユーザーはエピック一覧にアクセスできない', function () {
     $this->get(route('epics.index'))->assertRedirect(route('login'));
@@ -220,5 +221,36 @@ test('チーム稼働時間がメンバーの合計になる', function () {
         ->get(route('epics.index'))
         ->assertInertia(fn ($page) => $page
             ->where('estimation.team_daily_hours', 10)
+        );
+});
+
+test('タスクの actual_hours がワークログの合計で集計される', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $epic = Epic::factory()->create();
+
+    // ストーリー配下にタスクを作成
+    $story = Issue::factory()->for($repo)->create([
+        'parent_issue_id' => null,
+        'epic_id' => $epic->id,
+    ]);
+    $task = Issue::factory()->for($repo)->create([
+        'parent_issue_id' => $story->id,
+        'epic_id' => $epic->id,
+        'estimated_hours' => 4.0,
+    ]);
+
+    // タスクに複数のワークログを記録
+    WorkLog::factory()->create(['issue_id' => $task->id, 'hours' => 1.5, 'date' => '2026-04-01']);
+    WorkLog::factory()->create(['issue_id' => $task->id, 'hours' => 2.0, 'date' => '2026-04-02']);
+
+    $this->actingAs($user)
+        ->get(route('epics.index'))
+        ->assertInertia(fn ($page) => $page
+            // タスクの actual_hours = 1.5 + 2.0 = 3.5
+            ->where('epics.0.actual_hours', 3.5)
+            // completion_rate = 3.5 / 4.0 * 100 = 88
+            ->where('epics.0.issues.0.sub_issues.0.actual_hours', 3.5)
+            ->where('epics.0.issues.0.sub_issues.0.completion_rate', 88)
         );
 });

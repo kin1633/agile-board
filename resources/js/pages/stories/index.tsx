@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/react';
 import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import { index as storiesIndex, update as issueUpdate } from '@/routes/issues';
+import { index as workLogsIndex } from '@/routes/work-logs';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -15,8 +16,9 @@ interface TaskRow {
     title: string;
     state: 'open' | 'closed';
     assignee_login: string | null;
-    estimated_hours: string | null;
-    actual_hours: string | null;
+    estimated_hours: number | null;
+    actual_hours: number | null;
+    completion_rate: number | null;
     repository: { full_name: string };
 }
 
@@ -54,29 +56,21 @@ function githubUrl(fullName: string, issueNumber: number): string {
     return `https://github.com/${fullName}/issues/${issueNumber}`;
 }
 
-/** タスクの工数フィールドを blur 時に PATCH 送信する */
-function handleHoursBlur(
-    taskId: number,
-    field: 'estimated_hours' | 'actual_hours',
-    value: string,
-) {
+/** タスクの予定工数を blur 時に PATCH 送信する（実績はワークログ経由） */
+function handleEstimatedHoursBlur(taskId: number, value: string) {
     const parsed = value === '' ? null : parseFloat(value);
     if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
         return;
     }
-    router.patch(issueUpdate({ issue: taskId }).url, { [field]: parsed }, {
-        preserveScroll: true,
-    });
+    router.patch(
+        issueUpdate({ issue: taskId }).url,
+        { estimated_hours: parsed },
+        { preserveScroll: true },
+    );
 }
 
 /** ストーリー行コンポーネント */
-function StoryItem({
-    story,
-    epics,
-}: {
-    story: StoryRow;
-    epics: EpicOption[];
-}) {
+function StoryItem({ story, epics }: { story: StoryRow; epics: EpicOption[] }) {
     const [expanded, setExpanded] = useState(false);
 
     /** エピック紐付けを更新する */
@@ -195,7 +189,7 @@ function StoryItem({
                                 {task.assignee_login && (
                                     <span>@{task.assignee_login}</span>
                                 )}
-                                {/* 予定工数 */}
+                                {/* 予定工数（編集可） */}
                                 <label className="flex items-center gap-1">
                                     <span className="text-muted-foreground">
                                         予定
@@ -208,9 +202,8 @@ function StoryItem({
                                             task.estimated_hours ?? ''
                                         }
                                         onBlur={(e) =>
-                                            handleHoursBlur(
+                                            handleEstimatedHoursBlur(
                                                 task.id,
-                                                'estimated_hours',
                                                 e.target.value,
                                             )
                                         }
@@ -219,28 +212,37 @@ function StoryItem({
                                     />
                                     <span>h</span>
                                 </label>
-                                {/* 実績工数 */}
-                                <label className="flex items-center gap-1">
+                                {/* 実績工数はワークログから集計（読み取り専用） */}
+                                <span className="flex items-center gap-1">
                                     <span className="text-muted-foreground">
                                         実績
                                     </span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="0.25"
-                                        defaultValue={task.actual_hours ?? ''}
-                                        onBlur={(e) =>
-                                            handleHoursBlur(
-                                                task.id,
-                                                'actual_hours',
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="—"
-                                        className="w-16 rounded border border-sidebar-border/50 bg-background px-1.5 py-0.5 text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                                    />
+                                    <span className="tabular-nums">
+                                        {task.actual_hours ?? '—'}
+                                    </span>
                                     <span>h</span>
-                                </label>
+                                    {task.completion_rate !== null && (
+                                        <span
+                                            className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
+                                                task.completion_rate >= 100
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : task.completion_rate >= 80
+                                                      ? 'bg-yellow-100 text-yellow-700'
+                                                      : 'bg-muted text-muted-foreground'
+                                            }`}
+                                        >
+                                            {task.completion_rate}%
+                                        </span>
+                                    )}
+                                </span>
+                                {/* 実績入力ページへのリンク */}
+                                <a
+                                    href={workLogsIndex().url}
+                                    className="text-xs text-blue-500 hover:underline"
+                                    title="実績を入力する"
+                                >
+                                    記録
+                                </a>
                                 {/* GitHub リンク */}
                                 <a
                                     href={githubUrl(

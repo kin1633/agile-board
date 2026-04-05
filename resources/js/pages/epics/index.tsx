@@ -17,6 +17,7 @@ interface EpicTask {
     assignee_login: string | null;
     estimated_hours: number | null;
     actual_hours: number | null;
+    completion_rate: number | null;
     repository: { full_name: string };
 }
 
@@ -29,6 +30,7 @@ interface EpicStory {
     assignees: string[];
     estimated_hours: number | null;
     actual_hours: number | null;
+    completion_rate: number | null;
     repository: { full_name: string };
     sub_issues: EpicTask[];
 }
@@ -466,9 +468,25 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
                                 )}
                                 {(task.estimated_hours !== null ||
                                     task.actual_hours !== null) && (
-                                    <span>
-                                        {task.actual_hours ?? '-'} /{' '}
-                                        {task.estimated_hours ?? '-'} h
+                                    <span className="flex items-center gap-1">
+                                        <span>
+                                            {task.actual_hours ?? '-'} /{' '}
+                                            {task.estimated_hours ?? '-'} h
+                                        </span>
+                                        {task.completion_rate !== null && (
+                                            <span
+                                                className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
+                                                    task.completion_rate >= 100
+                                                        ? 'bg-green-100 text-green-700'
+                                                        : task.completion_rate >=
+                                                            80
+                                                          ? 'bg-yellow-100 text-yellow-700'
+                                                          : 'bg-muted text-muted-foreground'
+                                                }`}
+                                            >
+                                                {task.completion_rate}%
+                                            </span>
+                                        )}
                                     </span>
                                 )}
                                 {task.repository.full_name && (
