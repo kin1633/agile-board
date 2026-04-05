@@ -51,7 +51,11 @@ function MilestoneList({ milestones }: { milestones: MilestoneRow[] }) {
                 {milestones.map((milestone) => (
                     <li key={milestone.id}>
                         <Link
-                            href={milestoneRoutes.show({ milestone: milestone.id }).url}
+                            href={
+                                milestoneRoutes.show({
+                                    milestone: milestone.id,
+                                }).url
+                            }
                             className="flex items-center justify-between px-6 py-4 transition-colors hover:bg-muted/30"
                         >
                             <div>
@@ -70,7 +74,8 @@ function MilestoneList({ milestones }: { milestones: MilestoneRow[] }) {
                             <span
                                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[milestone.status] ?? ''}`}
                             >
-                                {STATUS_LABELS[milestone.status] ?? milestone.status}
+                                {STATUS_LABELS[milestone.status] ??
+                                    milestone.status}
                             </span>
                         </Link>
                     </li>
@@ -91,27 +96,29 @@ export default function MilestonesIndex({ upcoming, past }: Props) {
             <div className="flex flex-col gap-6 p-6">
                 {/* ヘッダー */}
                 <div className="flex items-center justify-between">
-                    <h1 className="text-xl font-semibold">マイルストーン一覧</h1>
+                    <h1 className="text-xl font-semibold">
+                        マイルストーン一覧
+                    </h1>
                 </div>
 
                 {/* タブ */}
-                <div className="flex gap-1 border-b border-sidebar-border/70">
+                <div className="flex rounded-lg border border-sidebar-border/70 p-0.5 text-sm">
                     <button
                         onClick={() => setActiveTab('upcoming')}
-                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                        className={`rounded-md px-3 py-1.5 transition-colors ${
                             activeTab === 'upcoming'
-                                ? 'border-b-2 border-primary text-primary'
-                                : 'text-muted-foreground hover:text-foreground'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'hover:bg-muted/50'
                         }`}
                     >
                         今月・今後
                     </button>
                     <button
                         onClick={() => setActiveTab('past')}
-                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                        className={`rounded-md px-3 py-1.5 transition-colors ${
                             activeTab === 'past'
-                                ? 'border-b-2 border-primary text-primary'
-                                : 'text-muted-foreground hover:text-foreground'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'hover:bg-muted/50'
                         }`}
                     >
                         過去
@@ -119,7 +126,9 @@ export default function MilestonesIndex({ upcoming, past }: Props) {
                 </div>
 
                 {/* タブコンテンツ */}
-                <MilestoneList milestones={activeTab === 'upcoming' ? upcoming : past} />
+                <MilestoneList
+                    milestones={activeTab === 'upcoming' ? upcoming : past}
+                />
             </div>
         </AppLayout>
     );

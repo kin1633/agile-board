@@ -33,7 +33,13 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
                         <CollapsibleNavItem
                             key={item.title}
                             item={item}
-                            isParentActive={isCurrentOrParentUrl(item.href)}
+                            isParentActive={
+                                isCurrentOrParentUrl(item.href) ||
+                                (item.children?.some((child) =>
+                                    isCurrentUrl(child.href),
+                                ) ??
+                                    false)
+                            }
                             isCurrentUrl={isCurrentUrl}
                         />
                     ) : (
