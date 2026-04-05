@@ -27,9 +27,6 @@ class EpicController extends Controller
         return Inertia::render('epics/index', [
             'epics' => $epics,
             'estimation' => $estimation,
-            // 設定から取得したステータス・優先度の選択肢（エピックフォームのドロップダウン用）
-            'statusOptions' => json_decode(Setting::where('key', 'epic_github_status_order')->value('value') ?? '[]', true),
-            'priorityOptions' => json_decode(Setting::where('key', 'epic_github_priority_order')->value('value') ?? '[]', true),
             // GitHub Projects から取得した色情報（name => GitHub color enum のマップ）
             'statusColors' => json_decode(Setting::where('key', 'epic_github_status_colors')->value('value') ?? '{}', true),
             'priorityColors' => json_decode(Setting::where('key', 'epic_github_priority_colors')->value('value') ?? '{}', true),
@@ -41,14 +38,12 @@ class EpicController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            // GitHub Projects のカスタム値を使用するため自由入力を許可する
-            'status' => ['required', 'string', 'max:255'],
             'due_date' => ['nullable', 'date'],
             'started_at' => ['nullable', 'date'],
-            'priority' => ['required', 'string', 'max:255'],
         ]);
 
-        Epic::create($validated);
+        // status/priority は GitHub 同期で自動設定されるため、作成時は初期値を固定する
+        Epic::create(array_merge($validated, ['status' => 'planning']));
 
         return redirect()->route('epics.index');
     }
@@ -58,11 +53,8 @@ class EpicController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            // GitHub Projects のカスタム値を使用するため自由入力を許可する
-            'status' => ['required', 'string', 'max:255'],
             'due_date' => ['nullable', 'date'],
             'started_at' => ['nullable', 'date'],
-            'priority' => ['required', 'string', 'max:255'],
         ]);
 
         $epic->update($validated);

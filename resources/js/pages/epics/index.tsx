@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import epicRoutes, { exportMethod as exportRoute } from '@/routes/epics';
+import { update as issueUpdate } from '@/routes/issues';
+import { index as workLogsIndex } from '@/routes/work-logs';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -74,10 +76,6 @@ interface Estimation {
 interface Props {
     epics: EpicRow[];
     estimation: Estimation;
-    /** 設定画面で管理するステータス選択肢（GitHub Projects の値または手動設定値） */
-    statusOptions: string[];
-    /** 設定画面で管理する優先度選択肢（GitHub Projects の値または手動設定値） */
-    priorityOptions: string[];
     /** GitHub Projects から取得したステータスの色情報（name => GitHub color enum） */
     statusColors: Record<string, string>;
     /** GitHub Projects から取得した優先度の色情報（name => GitHub color enum） */
@@ -161,10 +159,8 @@ function daysUntilDue(dueDateStr: string): number {
 interface EpicFormData {
     title: string;
     description: string;
-    status: string;
     due_date: string;
     started_at: string;
-    priority: string;
 }
 
 /** 当月の開始日・終了日を YYYY-MM-DD 形式で返す */
@@ -432,6 +428,17 @@ function EpicCard({
 function EpicStoryItem({ story }: { story: EpicStory }) {
     const [expanded, setExpanded] = useState(false);
 
+    /** タスクの予定工数をblur時にPATCH送信する（実績はワークログで管理） */
+    const handleEstimatedHoursBlur = (taskId: number, value: string) => {
+        const parsed = value === '' ? null : parseFloat(value);
+        if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
+            return;
+        }
+        router.patch(issueUpdate({ issue: taskId }).url, {
+            estimated_hours: parsed,
+        });
+    };
+
     return (
         <li>
             {/* ストーリー行 */}
@@ -533,29 +540,54 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
                                 {task.assignee_login && (
                                     <span>@{task.assignee_login}</span>
                                 )}
-                                {(task.estimated_hours !== null ||
-                                    task.actual_hours !== null) && (
-                                    <span className="flex items-center gap-1">
-                                        <span>
-                                            {task.actual_hours ?? '-'} /{' '}
-                                            {task.estimated_hours ?? '-'} h
-                                        </span>
-                                        {task.completion_rate !== null && (
-                                            <span
-                                                className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
-                                                    task.completion_rate >= 100
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : task.completion_rate >=
-                                                            80
-                                                          ? 'bg-yellow-100 text-yellow-700'
-                                                          : 'bg-muted text-muted-foreground'
-                                                }`}
-                                            >
-                                                {task.completion_rate}%
-                                            </span>
-                                        )}
+                                <label className="flex items-center gap-1">
+                                    <span>予定</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.25"
+                                        defaultValue={
+                                            task.estimated_hours ?? ''
+                                        }
+                                        onBlur={(e) =>
+                                            handleEstimatedHoursBlur(
+                                                task.id,
+                                                e.target.value,
+                                            )
+                                        }
+                                        placeholder="—"
+                                        className="w-16 rounded border border-sidebar-border/50 bg-background px-1.5 py-0.5 text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                                    />
+                                    <span>h</span>
+                                </label>
+                                {/* 実績はワークログ集計値を読み取り専用で表示 */}
+                                <span className="flex items-center gap-1">
+                                    <span>実績</span>
+                                    <span className="tabular-nums">
+                                        {task.actual_hours ?? '—'}
                                     </span>
-                                )}
+                                    <span>h</span>
+                                    {task.completion_rate !== null && (
+                                        <span
+                                            className={`rounded-full px-1.5 py-0.5 font-medium ${
+                                                task.completion_rate >= 100
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : task.completion_rate >= 80
+                                                      ? 'bg-yellow-100 text-yellow-700'
+                                                      : 'bg-muted text-muted-foreground'
+                                            }`}
+                                        >
+                                            {task.completion_rate}%
+                                        </span>
+                                    )}
+                                </span>
+                                <a
+                                    href={workLogsIndex().url}
+                                    className="text-blue-500 hover:underline"
+                                    title="実績を入力する"
+                                >
+                                    記録
+                                </a>
                                 {task.repository.full_name && (
                                     <a
                                         href={githubUrl(
@@ -582,8 +614,6 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
 export default function EpicsIndex({
     epics,
     estimation,
-    statusOptions,
-    priorityOptions,
     statusColors,
     priorityColors,
 }: Props) {
@@ -608,10 +638,8 @@ export default function EpicsIndex({
         useForm<EpicFormData>({
             title: '',
             description: '',
-            status: 'planning',
             due_date: '',
             started_at: '',
-            priority: 'medium',
         });
 
     const openCreate = () => {
@@ -624,10 +652,8 @@ export default function EpicsIndex({
         setData({
             title: epic.title,
             description: epic.description ?? '',
-            status: epic.status,
             due_date: epic.due_date ?? '',
             started_at: epic.started_at ?? '',
-            priority: epic.priority,
         });
         setEditingEpic(epic);
         setShowForm(true);
@@ -777,49 +803,6 @@ export default function EpicsIndex({
                                 />
                             </div>
                             <div className="flex flex-wrap gap-4">
-                                <div>
-                                    <label className="mb-1 block text-xs font-medium">
-                                        ステータス
-                                    </label>
-                                    <select
-                                        value={data.status}
-                                        onChange={(e) =>
-                                            setData('status', e.target.value)
-                                        }
-                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
-                                    >
-                                        {/* 設定画面で管理するステータス選択肢を動的に表示 */}
-                                        {statusOptions.map((opt) => (
-                                            <option key={opt} value={opt}>
-                                                {STATUS_LABELS[opt] ?? opt}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="mb-1 block text-xs font-medium">
-                                        優先度
-                                    </label>
-                                    <select
-                                        value={data.priority}
-                                        onChange={(e) =>
-                                            setData('priority', e.target.value)
-                                        }
-                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
-                                    >
-                                        {/* 設定画面で管理する優先度選択肢を動的に表示 */}
-                                        {priorityOptions.map((opt) => (
-                                            <option key={opt} value={opt}>
-                                                {PRIORITY_LABELS[opt] ?? opt}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {errors.priority && (
-                                        <p className="mt-1 text-xs text-red-500">
-                                            {errors.priority}
-                                        </p>
-                                    )}
-                                </div>
                                 <div>
                                     <label className="mb-1 block text-xs font-medium">
                                         リリース予定日（任意）

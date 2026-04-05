@@ -1,6 +1,8 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 import { update as issueUpdate } from '@/routes/issues';
+import { index as workLogsIndex } from '@/routes/work-logs';
 import {
     Bar,
     BarChart,
@@ -41,11 +43,15 @@ interface Epic {
 interface SubIssue {
     id: number;
     github_issue_number: number;
+    repository: { full_name: string };
     title: string;
     state: string;
     assignee_login: string | null;
     estimated_hours: number | null;
     actual_hours: number | null;
+    completion_rate: number | null;
+    project_start_date: string | null;
+    project_target_date: string | null;
 }
 
 interface Issue {
@@ -105,18 +111,19 @@ export default function SprintShow({
         });
     };
 
-    /** タスクの工数フィールドをblur時にPATCH送信する */
-    const handleHoursBlur = (
-        taskId: number,
-        field: 'estimated_hours' | 'actual_hours',
-        value: string,
-    ) => {
+    /** タスクの予定工数をblur時にPATCH送信する（実績はワークログで管理） */
+    const handleEstimatedHoursBlur = (taskId: number, value: string) => {
         const parsed = value === '' ? null : parseFloat(value);
         if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
             return;
         }
-        router.patch(issueUpdate({ issue: taskId }).url, { [field]: parsed });
+        router.patch(issueUpdate({ issue: taskId }).url, {
+            estimated_hours: parsed,
+        });
     };
+
+    const githubUrl = (repoFullName: string, issueNumber: number) =>
+        `https://github.com/${repoFullName}/issues/${issueNumber}`;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'スプリント', href: sprintRoutes.index() },
@@ -278,8 +285,26 @@ export default function SprintShow({
                                                                     {task.title}
                                                                 </span>
                                                             </div>
-                                                            {/* タスクの工数入力フィールド */}
+                                                            {/* タスク右側: 日程・担当者・工数・記録リンク */}
                                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                                {task.project_start_date && (
+                                                                    <span title="開始日">
+                                                                        {
+                                                                            task.project_start_date
+                                                                        }
+                                                                    </span>
+                                                                )}
+                                                                {task.project_target_date && (
+                                                                    <span
+                                                                        title="完了目標日"
+                                                                        className="text-orange-500"
+                                                                    >
+                                                                        →{' '}
+                                                                        {
+                                                                            task.project_target_date
+                                                                        }
+                                                                    </span>
+                                                                )}
                                                                 {task.assignee_login && (
                                                                     <span>
                                                                         @
@@ -289,7 +314,7 @@ export default function SprintShow({
                                                                     </span>
                                                                 )}
                                                                 <label className="flex items-center gap-1">
-                                                                    <span className="text-muted-foreground">
+                                                                    <span>
                                                                         予定
                                                                     </span>
                                                                     <input
@@ -303,9 +328,8 @@ export default function SprintShow({
                                                                         onBlur={(
                                                                             e,
                                                                         ) =>
-                                                                            handleHoursBlur(
+                                                                            handleEstimatedHoursBlur(
                                                                                 task.id,
-                                                                                'estimated_hours',
                                                                                 e
                                                                                     .target
                                                                                     .value,
@@ -314,40 +338,73 @@ export default function SprintShow({
                                                                         placeholder="—"
                                                                         className="w-16 rounded border border-sidebar-border/50 bg-background px-1.5 py-0.5 text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
                                                                     />
-                                                                    <span className="text-muted-foreground">
+                                                                    <span>
                                                                         h
                                                                     </span>
                                                                 </label>
-                                                                <label className="flex items-center gap-1">
-                                                                    <span className="text-muted-foreground">
+                                                                {/* 実績はワークログ集計値を読み取り専用で表示 */}
+                                                                <span className="flex items-center gap-1">
+                                                                    <span>
                                                                         実績
                                                                     </span>
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        step="0.25"
-                                                                        defaultValue={
-                                                                            task.actual_hours ??
-                                                                            ''
-                                                                        }
-                                                                        onBlur={(
-                                                                            e,
-                                                                        ) =>
-                                                                            handleHoursBlur(
-                                                                                task.id,
-                                                                                'actual_hours',
-                                                                                e
-                                                                                    .target
-                                                                                    .value,
-                                                                            )
-                                                                        }
-                                                                        placeholder="—"
-                                                                        className="w-16 rounded border border-sidebar-border/50 bg-background px-1.5 py-0.5 text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                                                                    />
-                                                                    <span className="text-muted-foreground">
+                                                                    <span className="tabular-nums">
+                                                                        {task.actual_hours ??
+                                                                            '—'}
+                                                                    </span>
+                                                                    <span>
                                                                         h
                                                                     </span>
-                                                                </label>
+                                                                    {task.completion_rate !==
+                                                                        null && (
+                                                                        <span
+                                                                            className={`rounded-full px-1.5 py-0.5 font-medium ${
+                                                                                task.completion_rate >=
+                                                                                100
+                                                                                    ? 'bg-green-100 text-green-700'
+                                                                                    : task.completion_rate >=
+                                                                                        80
+                                                                                      ? 'bg-yellow-100 text-yellow-700'
+                                                                                      : 'bg-muted text-muted-foreground'
+                                                                            }`}
+                                                                        >
+                                                                            {
+                                                                                task.completion_rate
+                                                                            }
+                                                                            %
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                                <a
+                                                                    href={
+                                                                        workLogsIndex()
+                                                                            .url
+                                                                    }
+                                                                    className="text-blue-500 hover:underline"
+                                                                    title="実績を入力する"
+                                                                >
+                                                                    記録
+                                                                </a>
+                                                                {task.repository
+                                                                    .full_name && (
+                                                                    <a
+                                                                        href={githubUrl(
+                                                                            task
+                                                                                .repository
+                                                                                .full_name,
+                                                                            task.github_issue_number,
+                                                                        )}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-muted-foreground hover:text-foreground"
+                                                                        aria-label="GitHub で開く"
+                                                                    >
+                                                                        <ExternalLink
+                                                                            size={
+                                                                                11
+                                                                            }
+                                                                        />
+                                                                    </a>
+                                                                )}
                                                             </div>
                                                         </li>
                                                     ),
