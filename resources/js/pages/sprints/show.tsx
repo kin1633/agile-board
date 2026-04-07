@@ -1,8 +1,6 @@
 import { Head, router } from '@inertiajs/react';
-import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { update as issueUpdate } from '@/routes/issues';
-import { index as workLogsIndex } from '@/routes/work-logs';
+import { useState } from 'react';
 import {
     Bar,
     BarChart,
@@ -16,7 +14,9 @@ import {
     YAxis,
 } from 'recharts';
 import AppLayout from '@/layouts/app-layout';
+import { update as issueUpdate } from '@/routes/issues';
 import sprintRoutes from '@/routes/sprints';
+import { index as workLogsIndex } from '@/routes/work-logs';
 import type { BreadcrumbItem } from '@/types';
 
 interface SprintInfo {
@@ -114,9 +114,11 @@ export default function SprintShow({
     /** タスクの予定工数をblur時にPATCH送信する（実績はワークログで管理） */
     const handleEstimatedHoursBlur = (taskId: number, value: string) => {
         const parsed = value === '' ? null : parseFloat(value);
+
         if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
             return;
         }
+
         router.patch(issueUpdate({ issue: taskId }).url, {
             estimated_hours: parsed,
         });

@@ -31,6 +31,7 @@ interface FormData {
 /** 現在年を基準に選択肢用の年リストを生成する */
 function buildYearOptions(): number[] {
     const current = new Date().getFullYear();
+
     return Array.from({ length: 6 }, (_, i) => current - 1 + i);
 }
 

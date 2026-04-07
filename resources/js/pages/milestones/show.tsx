@@ -93,6 +93,7 @@ export default function MilestoneShow({
         ) {
             return;
         }
+
         router.patch(sprintRoutes.milestone({ sprint: sprintId }).url, {
             milestone_id: null,
         });

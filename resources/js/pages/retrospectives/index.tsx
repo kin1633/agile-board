@@ -75,6 +75,7 @@ function formatDateRange(startDate: string | null, endDate: string | null): stri
     if (!startDate && !endDate) {
         return '';
     }
+
     return `${startDate ?? '?'} 〜 ${endDate ?? '?'}`;
 }
 
@@ -110,6 +111,7 @@ export default function RetrospectivesIndex({ sprints, selectedSprint, retrospec
         if (!confirm('この項目を削除しますか？')) {
             return;
         }
+
         router.delete(retrospectiveDestroy({ retrospective: item.id }).url);
     };
 
@@ -315,6 +317,7 @@ export default function RetrospectivesIndex({ sprints, selectedSprint, retrospec
                                         {/* KPT各タイプ */}
                                         {(['keep', 'problem', 'try'] as const).map((type) => {
                                             const items = sprint.retrospectives.filter((r) => r.type === type);
+
                                             return (
                                                 <div
                                                     key={type}

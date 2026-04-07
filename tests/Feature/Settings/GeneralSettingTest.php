@@ -29,6 +29,8 @@ test('hours_per_person_day を更新できる', function () {
             'hours_per_person_day' => 8,
             'work_start_time' => '09:00',
             'work_end_time' => '18:00',
+            'release_buffer_days' => 0,
+            'epic_github_status_order' => [],
         ])
         ->assertRedirect(route('settings.general'));
 

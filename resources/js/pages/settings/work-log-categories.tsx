@@ -137,6 +137,7 @@ export default function WorkLogCategoriesSettings({
         if (index === 0) {
             return;
         }
+
         const prev = categories[index - 1];
         router.patch(
             workLogCategoryRoutes.update({ workLogCategory: category.id }).url,
@@ -154,6 +155,7 @@ export default function WorkLogCategoriesSettings({
         if (index === categories.length - 1) {
             return;
         }
+
         const next = categories[index + 1];
         router.patch(
             workLogCategoryRoutes.update({ workLogCategory: category.id }).url,
@@ -175,6 +177,7 @@ export default function WorkLogCategoriesSettings({
         ) {
             return;
         }
+
         router.delete(
             workLogCategoryRoutes.destroy({ workLogCategory: category.id }).url,
             { preserveScroll: true },
@@ -189,6 +192,7 @@ export default function WorkLogCategoriesSettings({
         ) {
             return;
         }
+
         router.delete(
             workLogCategoryGroupRoutes.destroy({
                 workLogCategoryGroup: group.id,
@@ -201,6 +205,7 @@ export default function WorkLogCategoriesSettings({
         if (index === 0) {
             return;
         }
+
         const prev = groups[index - 1];
         router.patch(
             workLogCategoryGroupRoutes.update({
@@ -221,6 +226,7 @@ export default function WorkLogCategoriesSettings({
         if (index === groups.length - 1) {
             return;
         }
+
         const next = groups[index + 1];
         router.patch(
             workLogCategoryGroupRoutes.update({

@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import { ExternalLink, ChevronDown, ChevronRight, ExternalLink as NewIssueIcon } from 'lucide-react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { index as storiesIndex, update as issueUpdate } from '@/routes/issues';
 import { index as workLogsIndex } from '@/routes/work-logs';
@@ -77,9 +77,11 @@ function githubUrl(fullName: string, issueNumber: number): string {
 /** タスクの予定工数を blur 時に PATCH 送信する（実績はワークログ経由） */
 function handleEstimatedHoursBlur(taskId: number, value: string) {
     const parsed = value === '' ? null : parseFloat(value);
+
     if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
         return;
     }
+
     router.patch(
         issueUpdate({ issue: taskId }).url,
         { estimated_hours: parsed },
@@ -89,8 +91,12 @@ function handleEstimatedHoursBlur(taskId: number, value: string) {
 
 /** 日付文字列を MM/DD 形式で表示する（null の場合は —） */
 function formatDate(date: string | null): string {
-    if (!date) return '—';
+    if (!date) {
+return '—';
+}
+
     const [, month, day] = date.split('-');
+
     return `${month}/${day}`;
 }
 

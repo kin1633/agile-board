@@ -1,6 +1,6 @@
 import { Head, router, useForm } from '@inertiajs/react';
-import { useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import epicRoutes, { exportMethod as exportRoute } from '@/routes/epics';
 import { update as issueUpdate } from '@/routes/issues';
@@ -111,14 +111,9 @@ function githubColorToTailwind(color: string | undefined): string {
         PURPLE: 'bg-purple-100 text-purple-700 border-purple-200',
         GRAY: 'bg-gray-100 text-gray-600 border-gray-200',
     };
+
     return map[color ?? ''] ?? 'bg-muted text-muted-foreground border-border';
 }
-
-const PRIORITY_LABELS: Record<string, string> = {
-    high: '高',
-    medium: '中',
-    low: '低',
-};
 
 /** 残ポイントから推定スプリント数を計算する */
 function estimatedSprints(
@@ -128,6 +123,7 @@ function estimatedSprints(
     if (avgVelocity <= 0 || remainingPoints <= 0) {
         return '-';
     }
+
     return Math.ceil(remainingPoints / avgVelocity).toString();
 }
 
@@ -141,7 +137,9 @@ function estimatedHours(
     if (avgVelocity <= 0 || remainingPoints <= 0) {
         return '-';
     }
+
     const sprints = Math.ceil(remainingPoints / avgVelocity);
+
     return (sprints * teamDailyHours * workingDays).toString();
 }
 
@@ -151,6 +149,7 @@ function daysUntilDue(dueDateStr: string): number {
     today.setHours(0, 0, 0, 0);
     const due = new Date(dueDateStr);
     due.setHours(0, 0, 0, 0);
+
     return Math.round(
         (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
     );
@@ -171,6 +170,7 @@ function currentMonthRange(): { from: string; to: string } {
     // toISOString() は UTC 変換されるため JST 環境で日付がずれる。ローカル日付を使う。
     const fmt = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
     return { from: fmt(from), to: fmt(to) };
 }
 
@@ -189,23 +189,36 @@ function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
     if (sortKey === 'none') {
         return epics;
     }
+
     return [...epics].sort((a, b) => {
         if (sortKey === 'due_date') {
             // due_date なしは末尾
-            if (!a.due_date && !b.due_date) return 0;
-            if (!a.due_date) return 1;
-            if (!b.due_date) return -1;
+            if (!a.due_date && !b.due_date) {
+return 0;
+}
+
+            if (!a.due_date) {
+return 1;
+}
+
+            if (!b.due_date) {
+return -1;
+}
+
             return a.due_date.localeCompare(b.due_date);
         }
+
         if (sortKey === 'estimated_hours') {
             return (b.estimated_hours ?? 0) - (a.estimated_hours ?? 0);
         }
+
         if (sortKey === 'priority') {
             return (
                 (PRIORITY_ORDER[a.priority] ?? 1) -
                 (PRIORITY_ORDER[b.priority] ?? 1)
             );
         }
+
         return 0;
     });
 }
@@ -431,9 +444,11 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
     /** タスクの予定工数をblur時にPATCH送信する（実績はワークログで管理） */
     const handleEstimatedHoursBlur = (taskId: number, value: string) => {
         const parsed = value === '' ? null : parseFloat(value);
+
         if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
             return;
         }
+
         router.patch(issueUpdate({ issue: taskId }).url, {
             estimated_hours: parsed,
         });
@@ -661,6 +676,7 @@ export default function EpicsIndex({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
         if (editingEpic) {
             put(epicRoutes.update({ epic: editingEpic.id }).url, {
                 onSuccess: () => {
@@ -682,6 +698,7 @@ export default function EpicsIndex({
         if (!confirm(`「${epic.title}」を削除しますか？`)) {
             return;
         }
+
         router.delete(epicRoutes.destroy({ epic: epic.id }).url);
     };
 

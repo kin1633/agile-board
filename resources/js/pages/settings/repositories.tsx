@@ -90,6 +90,7 @@ export default function RepositoriesSettings({ repositories }: Props) {
     /** GitHubからリポジトリ候補を取得してドロップダウンに表示する */
     const loadGithubRepos = async () => {
         setLoadingGithubRepos(true);
+
         try {
             const res = await fetch('/settings/repositories/github', {
                 headers: { Accept: 'application/json' },
@@ -110,6 +111,7 @@ export default function RepositoriesSettings({ repositories }: Props) {
 
     const handleGithubSelect = (fullName: string) => {
         const repo = githubRepos.find((r) => r.full_name === fullName);
+
         if (repo) {
             setData({ owner: repo.owner, name: repo.name });
         }

@@ -69,6 +69,7 @@ function localDateString(d: Date): string {
 function shiftDate(dateStr: string, days: number): string {
     const d = new Date(dateStr + 'T00:00:00');
     d.setDate(d.getDate() + days);
+
     return localDateString(d);
 }
 
@@ -78,12 +79,14 @@ function weekRangeLabel(weekStart: string): string {
     const end = new Date(weekStart + 'T00:00:00');
     end.setDate(end.getDate() + 6);
     const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+
     return `${start.getFullYear()}年 ${fmt(start)} 〜 ${fmt(end)}`;
 }
 
 /** 曜日ラベルを生成する（月〜日） */
 function dowLabel(dateStr: string): string {
     const d = new Date(dateStr + 'T00:00:00');
+
     return ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
 }
 
@@ -92,6 +95,7 @@ function badgeClass(type: AttendanceType): string {
     if (type === 'full_leave' || type === 'half_am' || type === 'half_pm') {
         return 'bg-orange-100 text-orange-700 border border-orange-200';
     }
+
     return 'bg-blue-100 text-blue-700 border border-blue-200';
 }
 
@@ -103,12 +107,15 @@ function cellBgClass(
     const d = new Date(dateStr + 'T00:00:00');
     const dow = d.getDay();
     const isHoliday = holidays.some((h) => h.date === dateStr);
+
     if (dow === 0 || isHoliday) {
         return 'bg-red-50';
     }
+
     if (dow === 6) {
         return 'bg-blue-50';
     }
+
     return '';
 }
 
@@ -117,12 +124,15 @@ function headerTextClass(dateStr: string, holidays: HolidayEntry[]): string {
     const d = new Date(dateStr + 'T00:00:00');
     const dow = d.getDay();
     const isHoliday = holidays.some((h) => h.date === dateStr);
+
     if (dow === 0 || isHoliday) {
         return 'text-red-600';
     }
+
     if (dow === 6) {
         return 'text-blue-600';
     }
+
     return '';
 }
 
@@ -209,6 +219,7 @@ export default function AttendanceIndex({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
         if (!modal) {
             return;
         }
