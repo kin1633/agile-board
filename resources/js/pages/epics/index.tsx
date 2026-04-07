@@ -1,8 +1,10 @@
 import { Head, router, useForm } from '@inertiajs/react';
-import { useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import epicRoutes, { exportMethod as exportRoute } from '@/routes/epics';
+import { update as issueUpdate } from '@/routes/issues';
+import { index as workLogsIndex } from '@/routes/work-logs';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -18,6 +20,8 @@ interface EpicTask {
     estimated_hours: number | null;
     actual_hours: number | null;
     completion_rate: number | null;
+    project_start_date: string | null;
+    project_target_date: string | null;
     repository: { full_name: string };
 }
 
@@ -31,6 +35,8 @@ interface EpicStory {
     estimated_hours: number | null;
     actual_hours: number | null;
     completion_rate: number | null;
+    project_start_date: string | null;
+    project_target_date: string | null;
     repository: { full_name: string };
     sub_issues: EpicTask[];
 }
@@ -54,6 +60,10 @@ interface EpicRow {
     estimated_hours: number | null;
     /** タスク工数集計: 配下の全Taskの実績工数合計 */
     actual_hours: number | null;
+    /** GitHub Projects の Status フィールド値（同期時に自動設定） */
+    github_status: string | null;
+    /** GitHub Projects の Priority フィールド値（同期時に自動設定） */
+    github_priority: string | null;
     issues: EpicStory[];
 }
 
@@ -66,6 +76,10 @@ interface Estimation {
 interface Props {
     epics: EpicRow[];
     estimation: Estimation;
+    /** GitHub Projects から取得したステータスの色情報（name => GitHub color enum） */
+    statusColors: Record<string, string>;
+    /** GitHub Projects から取得した優先度の色情報（name => GitHub color enum） */
+    priorityColors: Record<string, string>;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -80,17 +94,26 @@ const STATUS_CLASSES: Record<string, string> = {
     done: 'bg-green-100 text-green-700',
 };
 
-const PRIORITY_LABELS: Record<string, string> = {
-    high: '高',
-    medium: '中',
-    low: '低',
-};
+/**
+ * GitHub Projects の color enum 値を Tailwind クラスに変換する。
+ *
+ * GitHub が返す色: BLUE, GREEN, RED, YELLOW, ORANGE, PINK, PURPLE, GRAY
+ * 同期前など color が未設定の場合はデフォルトのニュートラルカラーを返す。
+ */
+function githubColorToTailwind(color: string | undefined): string {
+    const map: Record<string, string> = {
+        BLUE: 'bg-blue-100 text-blue-700 border-blue-200',
+        GREEN: 'bg-green-100 text-green-700 border-green-200',
+        RED: 'bg-red-100 text-red-600 border-red-200',
+        YELLOW: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+        ORANGE: 'bg-orange-100 text-orange-700 border-orange-200',
+        PINK: 'bg-pink-100 text-pink-700 border-pink-200',
+        PURPLE: 'bg-purple-100 text-purple-700 border-purple-200',
+        GRAY: 'bg-gray-100 text-gray-600 border-gray-200',
+    };
 
-const PRIORITY_CLASSES: Record<string, string> = {
-    high: 'bg-red-100 text-red-700 border border-red-200',
-    medium: 'bg-yellow-100 text-yellow-700 border border-yellow-200',
-    low: 'bg-gray-100 text-gray-500 border border-gray-200',
-};
+    return map[color ?? ''] ?? 'bg-muted text-muted-foreground border-border';
+}
 
 /** 残ポイントから推定スプリント数を計算する */
 function estimatedSprints(
@@ -100,6 +123,7 @@ function estimatedSprints(
     if (avgVelocity <= 0 || remainingPoints <= 0) {
         return '-';
     }
+
     return Math.ceil(remainingPoints / avgVelocity).toString();
 }
 
@@ -113,7 +137,9 @@ function estimatedHours(
     if (avgVelocity <= 0 || remainingPoints <= 0) {
         return '-';
     }
+
     const sprints = Math.ceil(remainingPoints / avgVelocity);
+
     return (sprints * teamDailyHours * workingDays).toString();
 }
 
@@ -123,6 +149,7 @@ function daysUntilDue(dueDateStr: string): number {
     today.setHours(0, 0, 0, 0);
     const due = new Date(dueDateStr);
     due.setHours(0, 0, 0, 0);
+
     return Math.round(
         (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
     );
@@ -131,10 +158,8 @@ function daysUntilDue(dueDateStr: string): number {
 interface EpicFormData {
     title: string;
     description: string;
-    status: string;
     due_date: string;
     started_at: string;
-    priority: string;
 }
 
 /** 当月の開始日・終了日を YYYY-MM-DD 形式で返す */
@@ -142,10 +167,11 @@ function currentMonthRange(): { from: string; to: string } {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return {
-        from: from.toISOString().slice(0, 10),
-        to: to.toISOString().slice(0, 10),
-    };
+    // toISOString() は UTC 変換されるため JST 環境で日付がずれる。ローカル日付を使う。
+    const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    return { from: fmt(from), to: fmt(to) };
 }
 
 /** GitHub Issue へのリンクを生成する */
@@ -163,23 +189,36 @@ function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
     if (sortKey === 'none') {
         return epics;
     }
+
     return [...epics].sort((a, b) => {
         if (sortKey === 'due_date') {
             // due_date なしは末尾
-            if (!a.due_date && !b.due_date) return 0;
-            if (!a.due_date) return 1;
-            if (!b.due_date) return -1;
+            if (!a.due_date && !b.due_date) {
+return 0;
+}
+
+            if (!a.due_date) {
+return 1;
+}
+
+            if (!b.due_date) {
+return -1;
+}
+
             return a.due_date.localeCompare(b.due_date);
         }
+
         if (sortKey === 'estimated_hours') {
             return (b.estimated_hours ?? 0) - (a.estimated_hours ?? 0);
         }
+
         if (sortKey === 'priority') {
             return (
                 (PRIORITY_ORDER[a.priority] ?? 1) -
                 (PRIORITY_ORDER[b.priority] ?? 1)
             );
         }
+
         return 0;
     });
 }
@@ -188,11 +227,15 @@ function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
 function EpicCard({
     epic,
     estimation,
+    statusColors,
+    priorityColors,
     onEdit,
     onDelete,
 }: {
     epic: EpicRow;
     estimation: Estimation;
+    statusColors: Record<string, string>;
+    priorityColors: Record<string, string>;
     onEdit: (epic: EpicRow) => void;
     onDelete: (epic: EpicRow) => void;
 }) {
@@ -210,18 +253,28 @@ function EpicCard({
             <div className="flex items-start justify-between gap-4 px-6 py-4">
                 <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                        {/* 優先度バッジ */}
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_CLASSES[epic.priority] ?? ''}`}
-                        >
-                            ↑{PRIORITY_LABELS[epic.priority] ?? epic.priority}
-                        </span>
-                        {/* ステータスバッジ */}
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? ''}`}
-                        >
-                            {STATUS_LABELS[epic.status] ?? epic.status}
-                        </span>
+                        {/* GitHub Projects 優先度バッジ（同期時に自動設定・GitHub 色を使用） */}
+                        {epic.github_priority && (
+                            <span
+                                className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${githubColorToTailwind(priorityColors[epic.github_priority])}`}
+                            >
+                                ↑{epic.github_priority}
+                            </span>
+                        )}
+                        {/* ステータスバッジ: GitHub 同期済みなら github_status を優先、未同期ならアプリ手動値を表示 */}
+                        {epic.github_status ? (
+                            <span
+                                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${githubColorToTailwind(statusColors[epic.github_status])}`}
+                            >
+                                {epic.github_status}
+                            </span>
+                        ) : (
+                            <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[epic.status] ?? 'bg-muted text-muted-foreground'}`}
+                            >
+                                {STATUS_LABELS[epic.status] ?? epic.status}
+                            </span>
+                        )}
                         <span className="font-medium">{epic.title}</span>
                     </div>
                     {epic.description && (
@@ -388,6 +441,19 @@ function EpicCard({
 function EpicStoryItem({ story }: { story: EpicStory }) {
     const [expanded, setExpanded] = useState(false);
 
+    /** タスクの予定工数をblur時にPATCH送信する（実績はワークログで管理） */
+    const handleEstimatedHoursBlur = (taskId: number, value: string) => {
+        const parsed = value === '' ? null : parseFloat(value);
+
+        if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
+            return;
+        }
+
+        router.patch(issueUpdate({ issue: taskId }).url, {
+            estimated_hours: parsed,
+        });
+    };
+
     return (
         <li>
             {/* ストーリー行 */}
@@ -423,6 +489,15 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
                     )}
                 </div>
                 <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                    {/* GitHub Projects 開始日・完了目標日 */}
+                    {story.project_start_date && (
+                        <span title="開始日">{story.project_start_date}</span>
+                    )}
+                    {story.project_target_date && (
+                        <span title="完了目標日" className="text-orange-500">
+                            → {story.project_target_date}
+                        </span>
+                    )}
                     {story.assignees.length > 0 && (
                         <span>@{story.assignees.join(', @')}</span>
                     )}
@@ -463,32 +538,71 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
                                 </span>
                             </div>
                             <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                                {/* GitHub Projects 開始日・完了目標日 */}
+                                {task.project_start_date && (
+                                    <span title="開始日">
+                                        {task.project_start_date}
+                                    </span>
+                                )}
+                                {task.project_target_date && (
+                                    <span
+                                        title="完了目標日"
+                                        className="text-orange-500"
+                                    >
+                                        → {task.project_target_date}
+                                    </span>
+                                )}
                                 {task.assignee_login && (
                                     <span>@{task.assignee_login}</span>
                                 )}
-                                {(task.estimated_hours !== null ||
-                                    task.actual_hours !== null) && (
-                                    <span className="flex items-center gap-1">
-                                        <span>
-                                            {task.actual_hours ?? '-'} /{' '}
-                                            {task.estimated_hours ?? '-'} h
-                                        </span>
-                                        {task.completion_rate !== null && (
-                                            <span
-                                                className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
-                                                    task.completion_rate >= 100
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : task.completion_rate >=
-                                                            80
-                                                          ? 'bg-yellow-100 text-yellow-700'
-                                                          : 'bg-muted text-muted-foreground'
-                                                }`}
-                                            >
-                                                {task.completion_rate}%
-                                            </span>
-                                        )}
+                                <label className="flex items-center gap-1">
+                                    <span>予定</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.25"
+                                        defaultValue={
+                                            task.estimated_hours ?? ''
+                                        }
+                                        onBlur={(e) =>
+                                            handleEstimatedHoursBlur(
+                                                task.id,
+                                                e.target.value,
+                                            )
+                                        }
+                                        placeholder="—"
+                                        className="w-16 rounded border border-sidebar-border/50 bg-background px-1.5 py-0.5 text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                                    />
+                                    <span>h</span>
+                                </label>
+                                {/* 実績はワークログ集計値を読み取り専用で表示 */}
+                                <span className="flex items-center gap-1">
+                                    <span>実績</span>
+                                    <span className="tabular-nums">
+                                        {task.actual_hours ?? '—'}
                                     </span>
-                                )}
+                                    <span>h</span>
+                                    {task.completion_rate !== null && (
+                                        <span
+                                            className={`rounded-full px-1.5 py-0.5 font-medium ${
+                                                task.completion_rate >= 100
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : task.completion_rate >= 80
+                                                      ? 'bg-yellow-100 text-yellow-700'
+                                                      : 'bg-muted text-muted-foreground'
+                                            }`}
+                                        >
+                                            {task.completion_rate}%
+                                        </span>
+                                    )}
+                                </span>
+                                <a
+                                    href={workLogsIndex().url}
+                                    className="text-blue-500 hover:underline"
+                                    title="実績を入力する"
+                                >
+                                    記録
+                                </a>
                                 {task.repository.full_name && (
                                     <a
                                         href={githubUrl(
@@ -512,7 +626,12 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
     );
 }
 
-export default function EpicsIndex({ epics, estimation }: Props) {
+export default function EpicsIndex({
+    epics,
+    estimation,
+    statusColors,
+    priorityColors,
+}: Props) {
     const [showForm, setShowForm] = useState(false);
     const [editingEpic, setEditingEpic] = useState<EpicRow | null>(null);
     const [activeTab, setActiveTab] = useState<TabKey>('with_due');
@@ -534,10 +653,8 @@ export default function EpicsIndex({ epics, estimation }: Props) {
         useForm<EpicFormData>({
             title: '',
             description: '',
-            status: 'planning',
             due_date: '',
             started_at: '',
-            priority: 'medium',
         });
 
     const openCreate = () => {
@@ -550,10 +667,8 @@ export default function EpicsIndex({ epics, estimation }: Props) {
         setData({
             title: epic.title,
             description: epic.description ?? '',
-            status: epic.status,
             due_date: epic.due_date ?? '',
             started_at: epic.started_at ?? '',
-            priority: epic.priority,
         });
         setEditingEpic(epic);
         setShowForm(true);
@@ -561,6 +676,7 @@ export default function EpicsIndex({ epics, estimation }: Props) {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
         if (editingEpic) {
             put(epicRoutes.update({ epic: editingEpic.id }).url, {
                 onSuccess: () => {
@@ -582,6 +698,7 @@ export default function EpicsIndex({ epics, estimation }: Props) {
         if (!confirm(`「${epic.title}」を削除しますか？`)) {
             return;
         }
+
         router.delete(epicRoutes.destroy({ epic: epic.id }).url);
     };
 
@@ -705,45 +822,6 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                             <div className="flex flex-wrap gap-4">
                                 <div>
                                     <label className="mb-1 block text-xs font-medium">
-                                        ステータス
-                                    </label>
-                                    <select
-                                        value={data.status}
-                                        onChange={(e) =>
-                                            setData('status', e.target.value)
-                                        }
-                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
-                                    >
-                                        <option value="planning">計画中</option>
-                                        <option value="in_progress">
-                                            進行中
-                                        </option>
-                                        <option value="done">完了</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="mb-1 block text-xs font-medium">
-                                        優先度
-                                    </label>
-                                    <select
-                                        value={data.priority}
-                                        onChange={(e) =>
-                                            setData('priority', e.target.value)
-                                        }
-                                        className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
-                                    >
-                                        <option value="high">高</option>
-                                        <option value="medium">中</option>
-                                        <option value="low">低</option>
-                                    </select>
-                                    {errors.priority && (
-                                        <p className="mt-1 text-xs text-red-500">
-                                            {errors.priority}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="mb-1 block text-xs font-medium">
                                         リリース予定日（任意）
                                     </label>
                                     <input
@@ -865,6 +943,8 @@ export default function EpicsIndex({ epics, estimation }: Props) {
                                     key={epic.id}
                                     epic={epic}
                                     estimation={estimation}
+                                    statusColors={statusColors}
+                                    priorityColors={priorityColors}
                                     onEdit={openEdit}
                                     onDelete={handleDelete}
                                 />

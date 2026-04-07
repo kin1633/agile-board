@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import milestoneRoutes from '@/routes/milestones';
 import type { BreadcrumbItem } from '@/types';

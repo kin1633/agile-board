@@ -76,6 +76,12 @@ class GitHubSyncService
 
         // Issue の project_status を元に Epic の started_at を自動設定する
         $this->syncEpicStartDates();
+        // GitHub Projects の SingleSelectField 選択肢を設定に同期する（Status / Priority）
+        $this->syncSingleSelectOptions($githubToken);
+        // 優先度リストを使って Epic の github_status を集計する
+        $this->syncEpicGitHubStatuses();
+        // 優先度リストを使って Epic の github_priority を集計する
+        $this->syncEpicGitHubPriorities();
     }
 
     /**
@@ -202,6 +208,11 @@ class GitHubSyncService
                 'state' => $data['state'],
                 // GitHub Projects の Status フィールド値（着手日自動設定に使用）
                 'project_status' => $data['project_status'] ?? null,
+                // GitHub Projects の Priority フィールド値
+                'project_priority' => $data['project_priority'] ?? null,
+                // GitHub Projects の Start date / Target date フィールド値
+                'project_start_date' => $data['project_start_date'] ?? null,
+                'project_target_date' => $data['project_target_date'] ?? null,
                 'closed_at' => $data['closed_at'] ? Carbon::parse($data['closed_at']) : null,
                 'assignee_login' => $data['assignee'],
                 'sprint_id' => $sprint->id,
@@ -310,6 +321,169 @@ class GitHubSyncService
             if ($hasInProgress) {
                 $epic->update(['started_at' => now()->toDateString()]);
             }
+        }
+    }
+
+    /**
+     * GitHub Projects の SingleSelectField 選択肢を設定テーブルへ同期する。
+     *
+     * イシュー値ではなくフィールド定義から取得するため、
+     * 未割り当て選択肢も含めて全件同期できる。
+     *
+     * - API に存在する値のみを保持（削除された選択肢は除去）
+     * - ユーザーが設定画面で変更した並び順は維持
+     * - API に新しく追加された値は末尾に追加
+     */
+    private function syncSingleSelectOptions(string $token): void
+    {
+        $repositories = Repository::where('active', true)
+            ->whereNotNull('github_project_number')
+            ->get();
+
+        // Status と Priority の選択肢（名前・色）を全リポジトリから収集する
+        // 複数リポジトリが同一フィールド名を持つ場合は後勝ち（同名なら色も同じはず）
+        $statusOptions = [];
+        $priorityOptions = [];
+
+        foreach ($repositories as $repository) {
+            $fieldOptions = $this->graphql->fetchProjectSingleSelectOptions(
+                $repository->owner,
+                $repository->github_project_number,
+                $token
+            );
+            $statusOptions = array_merge($statusOptions, $fieldOptions['Status'] ?? []);
+            $priorityOptions = array_merge($priorityOptions, $fieldOptions['Priority'] ?? []);
+        }
+
+        // 名前の重複を除去（name をキーにして array_values で再インデックス）
+        $statusOptions = array_values(collect($statusOptions)->keyBy('name')->all());
+        $priorityOptions = array_values(collect($priorityOptions)->keyBy('name')->all());
+
+        $this->mergeSettingOptions(
+            'epic_github_status_order',
+            collect($statusOptions)->pluck('name')->all()
+        );
+        $this->mergeSettingOptions(
+            'epic_github_priority_order',
+            collect($priorityOptions)->pluck('name')->all()
+        );
+
+        // GitHub から取得した色情報を設定テーブルに保存する（name => color のマップ）
+        $this->updateColorSettings('epic_github_status_colors', $statusOptions);
+        $this->updateColorSettings('epic_github_priority_colors', $priorityOptions);
+    }
+
+    /**
+     * 設定テーブルの順序リストを API から取得した選択肢で更新する。
+     *
+     * 既存の並び順を維持しつつ、API に存在しない古い値を除去し、
+     * 新しい値を末尾に追加する。
+     *
+     * @param  list<string>  $apiOptions  API から取得した選択肢
+     */
+    private function mergeSettingOptions(string $settingsKey, array $apiOptions): void
+    {
+        if (empty($apiOptions)) {
+            return;
+        }
+
+        $existingOrder = json_decode(
+            Setting::where('key', $settingsKey)->value('value') ?? '[]',
+            true
+        );
+
+        // 既存の順序を維持しつつ API に存在する値のみ残す
+        $filtered = array_values(array_filter($existingOrder, fn ($v) => in_array($v, $apiOptions, true)));
+        // API にあるが既存リストにない新しい値を末尾に追加
+        $newValues = array_values(array_diff($apiOptions, $filtered));
+
+        Setting::where('key', $settingsKey)
+            ->update(['value' => json_encode(array_merge($filtered, $newValues))]);
+    }
+
+    /**
+     * GitHub Projects から取得した選択肢の色情報を設定テーブルに保存する。
+     *
+     * name => color（GitHub enum: BLUE/GREEN/RED 等）のマップとして上書き保存する。
+     * 色はユーザーが変更する想定がないため、同期のたびに全量上書きする。
+     *
+     * @param  list<array{name: string, color: string}>  $options
+     */
+    private function updateColorSettings(string $settingsKey, array $options): void
+    {
+        if (empty($options)) {
+            return;
+        }
+
+        $colorMap = collect($options)->pluck('color', 'name')->all();
+
+        Setting::updateOrCreate(
+            ['key' => $settingsKey],
+            ['value' => json_encode($colorMap)]
+        );
+    }
+
+    /**
+     * 配下 Story の project_status を優先度順で評価し Epic の github_status を更新する。
+     *
+     * 優先度リストの先頭に近いステータスを持つ Story が1つでもあれば、そのステータスを採用。
+     * project_status が全て NULL の Epic は github_status を NULL にリセット。
+     */
+    private function syncEpicGitHubStatuses(): void
+    {
+        $priorityOrder = json_decode(
+            Setting::where('key', 'epic_github_status_order')->value('value') ?? '[]',
+            true
+        );
+
+        $epics = Epic::with(['issues' => fn ($q) => $q->whereNull('parent_issue_id')])->get();
+
+        foreach ($epics as $epic) {
+            $statuses = $epic->issues->pluck('project_status')->filter()->unique()->values()->toArray();
+
+            if (empty($statuses)) {
+                $epic->update(['github_status' => null]);
+
+                continue;
+            }
+
+            // 優先度順に走査し、配下 Story に含まれる最初のステータスを採用
+            $githubStatus = collect($priorityOrder)->first(fn ($s) => in_array($s, $statuses, true))
+                ?? $statuses[0]; // 優先度リストにない値は先頭要素をフォールバック
+
+            $epic->update(['github_status' => $githubStatus]);
+        }
+    }
+
+    /**
+     * 配下 Story の project_priority を優先度順で評価し Epic の github_priority を更新する。
+     *
+     * 優先度リストの先頭に近い優先度を持つ Story が1つでもあれば、その優先度を採用。
+     * project_priority が全て NULL の Epic は github_priority を NULL にリセット。
+     */
+    private function syncEpicGitHubPriorities(): void
+    {
+        $priorityOrder = json_decode(
+            Setting::where('key', 'epic_github_priority_order')->value('value') ?? '[]',
+            true
+        );
+
+        $epics = Epic::with(['issues' => fn ($q) => $q->whereNull('parent_issue_id')])->get();
+
+        foreach ($epics as $epic) {
+            $priorities = $epic->issues->pluck('project_priority')->filter()->unique()->values()->toArray();
+
+            if (empty($priorities)) {
+                $epic->update(['github_priority' => null]);
+
+                continue;
+            }
+
+            // 優先度順に走査し、配下 Story に含まれる最初の優先度を採用
+            $githubPriority = collect($priorityOrder)->first(fn ($p) => in_array($p, $priorities, true))
+                ?? $priorities[0]; // 優先度リストにない値は先頭要素をフォールバック
+
+            $epic->update(['github_priority' => $githubPriority]);
         }
     }
 

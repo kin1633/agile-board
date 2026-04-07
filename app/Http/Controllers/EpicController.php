@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Epic;
+use App\Models\Holiday;
 use App\Models\Member;
 use App\Models\Setting;
 use App\Models\Sprint;
@@ -27,6 +28,9 @@ class EpicController extends Controller
         return Inertia::render('epics/index', [
             'epics' => $epics,
             'estimation' => $estimation,
+            // GitHub Projects から取得した色情報（name => GitHub color enum のマップ）
+            'statusColors' => json_decode(Setting::where('key', 'epic_github_status_colors')->value('value') ?? '{}', true),
+            'priorityColors' => json_decode(Setting::where('key', 'epic_github_priority_colors')->value('value') ?? '{}', true),
         ]);
     }
 
@@ -35,13 +39,12 @@ class EpicController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['required', 'string', 'in:planning,in_progress,done'],
             'due_date' => ['nullable', 'date'],
             'started_at' => ['nullable', 'date'],
-            'priority' => ['required', 'string', 'in:high,medium,low'],
         ]);
 
-        Epic::create($validated);
+        // status/priority は GitHub 同期で自動設定されるため、作成時は初期値を固定する
+        Epic::create(array_merge($validated, ['status' => 'planning']));
 
         return redirect()->route('epics.index');
     }
@@ -51,10 +54,8 @@ class EpicController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['required', 'string', 'in:planning,in_progress,done'],
             'due_date' => ['nullable', 'date'],
             'started_at' => ['nullable', 'date'],
-            'priority' => ['required', 'string', 'in:high,medium,low'],
         ]);
 
         $epic->update($validated);
@@ -225,6 +226,9 @@ class EpicController extends Controller
                 'actual_hours' => $storyActual > 0 ? (float) round($storyActual, 2) : null,
                 // 消化率: 実績÷予定×100（予定未設定の場合は null）
                 'completion_rate' => $storyEstimated > 0 ? (int) round($storyActual / $storyEstimated * 100) : null,
+                // GitHub Projects の日程フィールド
+                'project_start_date' => $issue->project_start_date?->toDateString(),
+                'project_target_date' => $issue->project_target_date?->toDateString(),
                 'sub_issues' => $issue->subIssues->map(function ($task) {
                     $taskActual = (float) $task->workLogs->sum('hours');
                     $taskEstimated = $task->estimated_hours !== null ? (float) $task->estimated_hours : null;
@@ -242,6 +246,9 @@ class EpicController extends Controller
                         'completion_rate' => $taskEstimated !== null && $taskEstimated > 0
                             ? (int) round($taskActual / $taskEstimated * 100)
                             : null,
+                        // GitHub Projects の日程フィールド
+                        'project_start_date' => $task->project_start_date?->toDateString(),
+                        'project_target_date' => $task->project_target_date?->toDateString(),
                     ];
                 })->values()->all(),
             ];
@@ -255,14 +262,27 @@ class EpicController extends Controller
             ->values()
             ->all();
 
-        // 着手日目安: due_date から ceil(予定工数 / チーム日次工数) 営業日遡った日付
+        // 着手日目安: (due_date - リリースバッファ営業日) からさらに工数日数分遡った日付
         // team_daily_hours が 0（メンバー未登録）や予定工数・期日が未設定の場合は null
         $estimatedStartDate = null;
         if ($epic->due_date && $epicEstimated > 0 && $teamDailyHours > 0) {
+            $releaseBuffer = (int) Setting::get('release_buffer_days', '0');
             $daysNeeded = (int) ceil($epicEstimated / $teamDailyHours);
-            $estimatedStartDate = Carbon::parse($epic->due_date)
-                ->subWeekdays($daysNeeded)
-                ->toDateString();
+            // 祝日を Holiday テーブルから取得して営業日計算に使用する
+            $holidays = Holiday::pluck('date')
+                ->map(fn ($d) => Carbon::parse($d)->toDateString())
+                ->all();
+            // まずリリースバッファ分さかのぼり、次に工数日数分さかのぼる
+            $codeCompleteDate = $this->subtractBusinessDays(
+                Carbon::parse($epic->due_date),
+                $releaseBuffer,
+                $holidays
+            );
+            $estimatedStartDate = $this->subtractBusinessDays(
+                $codeCompleteDate,
+                $daysNeeded,
+                $holidays
+            )->toDateString();
         }
 
         return [
@@ -270,10 +290,12 @@ class EpicController extends Controller
             'title' => $epic->title,
             'description' => $epic->description,
             'status' => $epic->status,
+            'github_status' => $epic->github_status,
+            'github_priority' => $epic->github_priority,
             'due_date' => $epic->due_date?->toDateString(),
             'started_at' => $epic->started_at?->toDateString(),
             'estimated_start_date' => $estimatedStartDate,
-            'priority' => $epic->priority ?? 'medium',
+            'priority' => $epic->priority ?? '',
             'total_points' => $totalPoints,
             'completed_points' => $completedPoints,
             'open_issues' => $openIssues,
@@ -314,5 +336,32 @@ class EpicController extends Controller
             'team_daily_hours' => $teamDailyHours,
             'default_working_days' => 5,
         ];
+    }
+
+    /**
+     * 指定日から祝日・週末を除いた営業日数分さかのぼった日付を返す。
+     *
+     * Carbon::subWeekdays() は土日のみスキップするため、Holiday テーブルの祝日を
+     * 別途考慮する必要がある。祝日に当たる日はスキップして1日ずつ戻りながらカウントする。
+     *
+     * @param  Carbon  $from  起点日
+     * @param  int  $days  遡る営業日数
+     * @param  string[]  $holidays  除外する祝日日付の配列（'Y-m-d' 形式）
+     */
+    private function subtractBusinessDays(Carbon $from, int $days, array $holidays): Carbon
+    {
+        $date = $from->copy();
+        $remaining = $days;
+
+        while ($remaining > 0) {
+            $date->subDay();
+            // 土日または祝日はスキップ
+            if ($date->isWeekend() || in_array($date->toDateString(), $holidays, true)) {
+                continue;
+            }
+            $remaining--;
+        }
+
+        return $date;
     }
 }

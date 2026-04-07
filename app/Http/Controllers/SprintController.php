@@ -33,8 +33,8 @@ class SprintController extends Controller
 
     public function show(Sprint $sprint): Response
     {
-        // subIssues（タスク）も eager load し、工数表示に使用する
-        $sprint->load(['issues.labels', 'issues.epic', 'issues.subIssues', 'milestone']);
+        // subIssues のワークログ・リポジトリも eager load し、実績集計と GitHub リンクに使用する
+        $sprint->load(['issues.labels', 'issues.epic', 'issues.subIssues.workLogs', 'issues.subIssues.repository', 'milestone']);
 
         $issues = $sprint->issues->map(fn ($issue) => [
             'id' => $issue->id,
@@ -48,15 +48,28 @@ class SprintController extends Controller
             'closed_at' => $issue->closed_at?->toDateString(),
             'epic' => $issue->epic ? ['id' => $issue->epic->id, 'title' => $issue->epic->title] : null,
             'labels' => $issue->labels->map(fn ($l) => ['id' => $l->id, 'name' => $l->name])->all(),
-            'sub_issues' => $issue->subIssues->map(fn ($task) => [
-                'id' => $task->id,
-                'github_issue_number' => $task->github_issue_number,
-                'title' => $task->title,
-                'state' => $task->state,
-                'assignee_login' => $task->assignee_login,
-                'estimated_hours' => $task->estimated_hours !== null ? (float) $task->estimated_hours : null,
-                'actual_hours' => $task->actual_hours !== null ? (float) $task->actual_hours : null,
-            ])->values()->all(),
+            'sub_issues' => $issue->subIssues->map(function ($task) {
+                $taskActual = (float) $task->workLogs->sum('hours');
+                $taskEstimated = $task->estimated_hours !== null ? (float) $task->estimated_hours : null;
+
+                return [
+                    'id' => $task->id,
+                    'github_issue_number' => $task->github_issue_number,
+                    'repository' => ['full_name' => $task->repository?->full_name ?? ''],
+                    'title' => $task->title,
+                    'state' => $task->state,
+                    'assignee_login' => $task->assignee_login,
+                    'estimated_hours' => $taskEstimated,
+                    // 実績はワークログの合計から算出する（actual_hours カラムは使用しない）
+                    'actual_hours' => $taskActual > 0 ? round($taskActual, 2) : null,
+                    // 消化率: 実績÷予定×100（予定未設定の場合は null）
+                    'completion_rate' => $taskEstimated !== null && $taskEstimated > 0
+                        ? (int) round($taskActual / $taskEstimated * 100)
+                        : null,
+                    'project_start_date' => $task->project_start_date?->toDateString(),
+                    'project_target_date' => $task->project_target_date?->toDateString(),
+                ];
+            })->values()->all(),
         ]);
 
         $burndownData = $this->buildBurndownData($sprint);

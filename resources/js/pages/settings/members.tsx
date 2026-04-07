@@ -39,9 +39,11 @@ export default function MembersSettings({ members }: Props) {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
         if (!editingMember) {
             return;
         }
+
         patch(memberUpdate({ member: editingMember.id }).url, {
             onSuccess: () => setEditingMember(null),
         });

@@ -181,7 +181,7 @@ class GitHubGraphQLClient
      * GitHub Projects の Status フィールド値（SingleSelectField）も取得する。
      *
      * @param  array<int, array{id: string}>  $iterations  既知の Iteration 一覧（ID 集合の構築に使用）
-     * @return array<string, array<int, array{number: int, title: string, state: string, project_status: string|null, closed_at: string|null, assignee: string|null, labels: array<int, string>, repo_owner: string, repo_name: string}>>
+     * @return array<string, array<int, array{number: int, title: string, state: string, project_status: string|null, project_priority: string|null, project_start_date: string|null, project_target_date: string|null, closed_at: string|null, assignee: string|null, labels: array<int, string>, repo_owner: string, repo_name: string}>>
      */
     private function fetchProjectItems(
         string $owner,
@@ -225,11 +225,20 @@ class GitHubGraphQLClient
                                     ... on ProjectV2ItemFieldIterationValue {
                                         iterationId
                                     }
-                                    # Status フィールド（SingleSelectField）の値を取得する
+                                    # Status・Priority フィールド（SingleSelectField）の値を取得する
                                     ... on ProjectV2ItemFieldSingleSelectValue {
                                         name
                                         field {
                                             ... on ProjectV2SingleSelectField {
+                                                name
+                                            }
+                                        }
+                                    }
+                                    # Start date・Target date フィールド（DateValue）の値を取得する
+                                    ... on ProjectV2ItemFieldDateValue {
+                                        date
+                                        field {
+                                            ... on ProjectV2Field {
                                                 name
                                             }
                                         }
@@ -280,6 +289,11 @@ class GitHubGraphQLClient
                     'state' => strtolower($content['state']),
                     // GitHub Projects の Status フィールド値（例: "In Progress"）
                     'project_status' => $this->extractSingleSelectValue($fieldValueNodes, 'Status'),
+                    // GitHub Projects の Priority フィールド値（例: "High"）
+                    'project_priority' => $this->extractSingleSelectValue($fieldValueNodes, 'Priority'),
+                    // GitHub Projects の Start date / Target date フィールド値（例: "2026-04-01"）
+                    'project_start_date' => $this->extractDateValue($fieldValueNodes, 'Start date'),
+                    'project_target_date' => $this->extractDateValue($fieldValueNodes, 'Target date'),
                     'closed_at' => $content['closedAt'] ?? null,
                     'assignee' => $content['assignees']['nodes'][0]['login'] ?? null,
                     'labels' => collect($content['labels']['nodes'])->pluck('name')->all(),
@@ -440,6 +454,66 @@ class GitHubGraphQLClient
     }
 
     /**
+     * ProjectV2 の全 SingleSelectField とその選択肢（名前・色）を取得する。
+     *
+     * フィールド名 => 選択肢リスト のマップを返す。
+     * イシュー値に依存せずフィールド定義から取得するため、
+     * 未割り当て選択肢も含めて全件取得できる。
+     * color は GitHub 側の enum 値（BLUE, GREEN, RED, YELLOW, ORANGE, PINK, PURPLE, GRAY）。
+     *
+     * @return array<string, list<array{name: string, color: string}>>
+     *                                                                 例: ['Status' => [['name' => 'Todo', 'color' => 'GRAY'], ...]]
+     */
+    public function fetchProjectSingleSelectOptions(
+        string $owner,
+        int $projectNumber,
+        string $token
+    ): array {
+        $ownerType = $this->resolveOwnerType($owner, $token);
+
+        $query = <<<GRAPHQL
+        query(\$owner: String!, \$number: Int!) {
+            {$ownerType}(login: \$owner) {
+                projectV2(number: \$number) {
+                    fields(first: 50) {
+                        nodes {
+                            ... on ProjectV2SingleSelectField {
+                                name
+                                options {
+                                    name
+                                    color
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        GRAPHQL;
+
+        $data = $this->query($query, [
+            'owner' => $owner,
+            'number' => $projectNumber,
+        ], $token);
+
+        $fields = $data[$ownerType]['projectV2']['fields']['nodes'] ?? [];
+        $result = [];
+
+        foreach ($fields as $field) {
+            // SingleSelectField のみ options キーを持つ
+            if (! isset($field['options'])) {
+                continue;
+            }
+            $result[$field['name']] = array_map(
+                fn ($opt) => ['name' => $opt['name'], 'color' => $opt['color'] ?? 'GRAY'],
+                $field['options']
+            );
+        }
+
+        return $result;
+    }
+
+    /**
      * fieldValues から指定フィールド名の SingleSelectField の値を返す。
      *
      * GitHub Projects の Status などの SingleSelectField に使用する。
@@ -452,6 +526,25 @@ class GitHubGraphQLClient
             // SingleSelectValue は name と field.name を持つ
             if (isset($node['name']) && isset($node['field']['name']) && $node['field']['name'] === $fieldName) {
                 return $node['name'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * fieldValues から指定フィールド名の DateField の値を返す。
+     *
+     * GitHub Projects の Start date / Target date などの DateField に使用する。
+     *
+     * @param  array<int, mixed>  $fieldValueNodes
+     */
+    private function extractDateValue(array $fieldValueNodes, string $fieldName): ?string
+    {
+        foreach ($fieldValueNodes as $node) {
+            // DateValue は date と field.name を持つ
+            if (isset($node['date']) && isset($node['field']['name']) && $node['field']['name'] === $fieldName) {
+                return $node['date'];
             }
         }
 

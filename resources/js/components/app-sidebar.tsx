@@ -26,14 +26,14 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
-import milestones from '@/routes/milestones';
-import sprints from '@/routes/sprints';
+import attendanceRoutes from '@/routes/attendance';
 import epics from '@/routes/epics';
 import issues from '@/routes/issues';
+import milestones from '@/routes/milestones';
 import retrospectives from '@/routes/retrospectives';
-import workLogs from '@/routes/work-logs';
-import attendanceRoutes from '@/routes/attendance';
 import { general } from '@/routes/settings';
+import sprints from '@/routes/sprints';
+import workLogs from '@/routes/work-logs';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [

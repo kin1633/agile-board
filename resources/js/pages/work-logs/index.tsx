@@ -1,16 +1,14 @@
-import React from 'react';
-import FullCalendar from '@fullcalendar/react';
-import timeGridPlugin from '@fullcalendar/timegrid';
-import interactionPlugin, {
-    type DateSelectArg,
-    type EventResizeDoneArg,
-} from '@fullcalendar/interaction';
 import type {
     EventClickArg,
     EventDropArg,
     EventInput,
 } from '@fullcalendar/core';
+import interactionPlugin from '@fullcalendar/interaction';
+import type {DateSelectArg, EventResizeDoneArg} from '@fullcalendar/interaction';
+import FullCalendar from '@fullcalendar/react';
+import timeGridPlugin from '@fullcalendar/timegrid';
 import { Head, router, useForm } from '@inertiajs/react';
+import React from 'react';
 import AppLayout from '@/layouts/app-layout';
 import {
     index as workLogsIndex,
@@ -50,6 +48,7 @@ function localDateString(d: Date): string {
 function shiftDate(dateStr: string, days: number): string {
     const d = new Date(dateStr + 'T00:00:00');
     d.setDate(d.getDate() + days);
+
     return localDateString(d);
 }
 
@@ -59,6 +58,7 @@ function weekRangeLabel(weekStart: string): string {
     const end = new Date(weekStart + 'T00:00:00');
     end.setDate(end.getDate() + 6);
     const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+
     return `${start.getFullYear()}年 ${fmt(start)} 〜 ${fmt(end)}`;
 }
 
@@ -66,6 +66,7 @@ function weekRangeLabel(weekStart: string): string {
 function toHHMM(date: Date): string {
     const h = String(date.getHours()).padStart(2, '0');
     const m = String(date.getMinutes()).padStart(2, '0');
+
     return `${h}:${m}`;
 }
 
@@ -184,6 +185,7 @@ export default function WorkLogsIndex({
         if (!value) {
             return categories.find((c) => c.is_default)?.label ?? '開発作業';
         }
+
         return categories.find((c) => c.value === value)?.label ?? value;
     };
 
@@ -192,9 +194,11 @@ export default function WorkLogsIndex({
         if (log.category) {
             return categoryLabel(log.category);
         }
+
         if (log.issue_title) {
             return log.issue_title;
         }
+
         return categoryLabel(null);
     };
 
@@ -339,6 +343,7 @@ export default function WorkLogsIndex({
         if (!confirm('このログを削除しますか？')) {
             return;
         }
+
         router.delete(destroy({ workLog: log.id }).url, {
             preserveScroll: true,
         });
@@ -366,6 +371,7 @@ export default function WorkLogsIndex({
     const backgroundEvents: EventInput[] = Array.from({ length: 7 }, (_, i) => {
         const date = shiftDate(filters.week_start, i);
         const dow = new Date(date + 'T00:00:00').getDay();
+
         return {
             date,
             isSat: dow === 6,
@@ -523,6 +529,7 @@ export default function WorkLogsIndex({
                             const isSat = dow === 6;
                             const isSun = dow === 0;
                             const isHol = isHoliday(dateStr);
+
                             if (isSat || isSun || isHol) {
                                 arg.el.style.backgroundColor =
                                     isSun || isHol

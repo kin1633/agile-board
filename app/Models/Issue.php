@@ -20,7 +20,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable([
     'repository_id', 'sprint_id', 'epic_id', 'parent_issue_id', 'github_issue_number',
-    'title', 'state', 'project_status', 'closed_at', 'assignee_login', 'story_points', 'exclude_velocity',
+    'title', 'state', 'project_status', 'project_priority', 'project_start_date', 'project_target_date',
+    'closed_at', 'assignee_login', 'story_points', 'exclude_velocity',
     'estimated_hours', 'actual_hours', 'synced_at',
 ])]
 class Issue extends Model
@@ -35,6 +36,8 @@ class Issue extends Model
             'synced_at' => 'datetime',
             'estimated_hours' => 'decimal:2',
             'actual_hours' => 'decimal:2',
+            'project_start_date' => 'date:Y-m-d',
+            'project_target_date' => 'date:Y-m-d',
         ];
     }
 
