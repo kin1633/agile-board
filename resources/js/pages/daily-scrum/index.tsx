@@ -110,6 +110,10 @@ export default function DailyScrumIndex({
     const [editingLog, setEditingLog] = React.useState<DailyScrumLogRow | null>(
         null,
     );
+    /** タスク一覧から選択されたタスク（モーダルのタスク欄をプリセットするために保持） */
+    const [selectedTask, setSelectedTask] = React.useState<TaskOption | null>(
+        null,
+    );
 
     const { data, setData, post, put, processing, errors, reset } =
         useForm<FormData>({
@@ -120,6 +124,10 @@ export default function DailyScrumIndex({
             memo: '',
         });
 
+    /** issue_id → ログ行 の Map（タスク一覧で記録済み判定に使用） */
+    const logByTaskId = new Map<number, DailyScrumLogRow>();
+    logs.forEach((log) => logByTaskId.set(log.issue_id, log));
+
     /** フィルタ変更時にページを再読み込みする */
     const applyFilter = (date: string, memberId: string) => {
         router.get(
@@ -129,6 +137,28 @@ export default function DailyScrumIndex({
         );
     };
 
+    const closeModal = () => {
+        setShowModal(false);
+        setSelectedTask(null);
+        setEditingLog(null);
+    };
+
+    /** タスク一覧の「記録」ボタンから開く: タスクをプリセット */
+    const openCreateForTask = (task: TaskOption) => {
+        reset();
+        setData({
+            date: filters.date,
+            issue_id: task.id.toString(),
+            member_id: currentMemberId?.toString() ?? '',
+            progress_percentage: '0',
+            memo: '',
+        });
+        setSelectedTask(task);
+        setEditingLog(null);
+        setShowModal(true);
+    };
+
+    /** 「+ その他を記録」ボタンから開く: タスクは手動選択 */
     const openCreate = () => {
         reset();
         setData({
@@ -138,6 +168,7 @@ export default function DailyScrumIndex({
             progress_percentage: '0',
             memo: '',
         });
+        setSelectedTask(null);
         setEditingLog(null);
         setShowModal(true);
     };
@@ -150,6 +181,7 @@ export default function DailyScrumIndex({
             progress_percentage: log.progress_percentage.toString(),
             memo: log.memo ?? '',
         });
+        setSelectedTask(null);
         setEditingLog(log);
         setShowModal(true);
     };
@@ -160,16 +192,13 @@ export default function DailyScrumIndex({
         if (editingLog) {
             put(dailyScrum.update({ dailyScrumLog: editingLog.id }).url, {
                 data: data as unknown as FormData,
-                onSuccess: () => {
-                    setShowModal(false);
-                    setEditingLog(null);
-                },
+                onSuccess: () => closeModal(),
             });
         } else {
             post(dailyScrum.store().url, {
                 data: data as unknown as FormData,
                 onSuccess: () => {
-                    setShowModal(false);
+                    closeModal();
                     reset();
                 },
             });
@@ -184,6 +213,7 @@ export default function DailyScrumIndex({
         router.delete(dailyScrum.destroy({ dailyScrumLog: log.id }).url, {
             preserveScroll: true,
         });
+        closeModal();
     };
 
     /** 進捗率の平均を計算する（ログが0件の場合は0） */
@@ -199,7 +229,7 @@ export default function DailyScrumIndex({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="デイリースクラム" />
             <div className="flex flex-col gap-4 p-6">
-                {/* ヘッダー: 日付ナビ + メンバーフィルタ + 追加ボタン */}
+                {/* ヘッダー: 日付ナビ + メンバーフィルタ + その他記録ボタン */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
                         {/* 日付ナビゲーション */}
@@ -262,7 +292,6 @@ export default function DailyScrumIndex({
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* アクティブスプリント名 */}
                         {activeSprint && (
                             <span className="text-sm text-muted-foreground">
                                 スプリント:{' '}
@@ -271,11 +300,12 @@ export default function DailyScrumIndex({
                                 </span>
                             </span>
                         )}
+                        {/* スプリント外タスクや特殊ケース用のフォールバック */}
                         <button
                             onClick={openCreate}
-                            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                            className="rounded-lg border border-sidebar-border/70 px-4 py-2 text-sm hover:bg-muted/50"
                         >
-                            + 記録追加
+                            + その他を記録
                         </button>
                     </div>
                 </div>
@@ -309,14 +339,115 @@ export default function DailyScrumIndex({
                     </div>
                 )}
 
-                {/* ログ一覧テーブル */}
+                {/* タスク一覧（主役）: オープン中タスクを一覧表示し、記録済み状態をインライン表示 */}
                 <div className="overflow-hidden rounded-xl border border-sidebar-border/70 bg-card">
-                    {logs.length === 0 ? (
-                        <div className="py-12 text-center text-sm text-muted-foreground">
-                            この日の記録はありません。「+
-                            記録追加」から入力してください。
+                    <div className="flex items-center justify-between border-b border-sidebar-border/70 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                                タスク一覧
+                            </span>
+                            {activeSprint && (
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                    {activeSprint.title}
+                                </span>
+                            )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                            {logByTaskId.size} / {tasks.length} 件記録済み
+                        </span>
+                    </div>
+
+                    {tasks.length === 0 ? (
+                        <div className="py-10 text-center text-sm text-muted-foreground">
+                            アクティブスプリントのオープン中タスクがありません
                         </div>
                     ) : (
+                        <div className="divide-y divide-sidebar-border/40">
+                            {tasks.map((task) => {
+                                const log = logByTaskId.get(task.id);
+
+                                return (
+                                    <div
+                                        key={task.id}
+                                        className="flex items-center gap-4 px-4 py-3 hover:bg-muted/20"
+                                    >
+                                        {/* タスク情報（エピック→ストーリー→タスク） */}
+                                        <div className="min-w-0 flex-1">
+                                            {task.epic_title && (
+                                                <div className="text-xs text-muted-foreground/60">
+                                                    {task.epic_title}
+                                                </div>
+                                            )}
+                                            {task.story_title && (
+                                                <div className="text-xs text-muted-foreground">
+                                                    {task.story_title}
+                                                </div>
+                                            )}
+                                            <div className="text-sm font-medium">
+                                                {task.github_issue_number && (
+                                                    <span className="mr-1 text-muted-foreground">
+                                                        #{task.github_issue_number}
+                                                    </span>
+                                                )}
+                                                {task.title}
+                                            </div>
+                                        </div>
+
+                                        {/* 記録済み: 進捗バー + メモ冒頭 + 編集ボタン */}
+                                        {log ? (
+                                            <div className="flex shrink-0 items-center gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                                                        <div
+                                                            className={`h-full rounded-full ${progressColor(log.progress_percentage)}`}
+                                                            style={{
+                                                                width: `${log.progress_percentage}%`,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <span className="w-10 text-right tabular-nums text-xs">
+                                                        {log.progress_percentage}
+                                                        %
+                                                    </span>
+                                                </div>
+                                                {log.memo && (
+                                                    <span className="hidden max-w-32 truncate text-xs text-muted-foreground sm:block">
+                                                        {log.memo}
+                                                    </span>
+                                                )}
+                                                <button
+                                                    onClick={() => openEdit(log)}
+                                                    className="rounded-lg border border-sidebar-border/70 px-3 py-1 text-xs hover:bg-muted/50"
+                                                >
+                                                    編集
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            /* 未記録: 記録ボタン */
+                                            <button
+                                                onClick={() =>
+                                                    openCreateForTask(task)
+                                                }
+                                                className="shrink-0 rounded-lg bg-primary/10 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                                            >
+                                                記録
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* 本日の記録テーブル（サブ）: タスク一覧に含まれないログや全体確認用 */}
+                {logs.length > 0 && (
+                    <div className="overflow-hidden rounded-xl border border-sidebar-border/70 bg-card">
+                        <div className="border-b border-sidebar-border/70 px-4 py-3">
+                            <span className="text-sm font-medium">
+                                本日の記録
+                            </span>
+                        </div>
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-sidebar-border/70 bg-muted/30">
@@ -403,8 +534,8 @@ export default function DailyScrumIndex({
                                 ))}
                             </tbody>
                         </table>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
 
             {/* 追加・編集モーダル */}
@@ -439,35 +570,60 @@ export default function DailyScrumIndex({
                                 )}
                             </div>
 
-                            {/* タスク選択 */}
+                            {/* タスク: タスク一覧から選択した場合は読み取り専用表示、それ以外はドロップダウン */}
                             <div>
                                 <label className="mb-1 block text-xs font-medium">
                                     タスク
                                 </label>
-                                <select
-                                    value={data.issue_id}
-                                    onChange={(e) =>
-                                        setData('issue_id', e.target.value)
-                                    }
-                                    className="w-full rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
-                                    required
-                                >
-                                    <option value="">選択してください</option>
-                                    {tasks.map((t) => (
-                                        <option key={t.id} value={t.id}>
-                                            {t.epic_title
-                                                ? `[${t.epic_title}] `
-                                                : ''}
-                                            {t.story_title
-                                                ? `[${t.story_title}] `
-                                                : ''}
-                                            {t.github_issue_number
-                                                ? `#${t.github_issue_number} `
-                                                : ''}
-                                            {t.title}
+                                {selectedTask ? (
+                                    <div className="rounded-lg border border-sidebar-border/70 bg-muted/30 px-3 py-2 text-sm">
+                                        {selectedTask.epic_title && (
+                                            <span className="mr-1 text-xs text-muted-foreground/60">
+                                                {selectedTask.epic_title}
+                                                {' > '}
+                                            </span>
+                                        )}
+                                        {selectedTask.story_title && (
+                                            <span className="mr-1 text-xs text-muted-foreground">
+                                                {selectedTask.story_title}
+                                                {' > '}
+                                            </span>
+                                        )}
+                                        {selectedTask.github_issue_number && (
+                                            <span className="mr-1 text-muted-foreground">
+                                                #{selectedTask.github_issue_number}
+                                            </span>
+                                        )}
+                                        {selectedTask.title}
+                                    </div>
+                                ) : (
+                                    <select
+                                        value={data.issue_id}
+                                        onChange={(e) =>
+                                            setData('issue_id', e.target.value)
+                                        }
+                                        className="w-full rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-sm"
+                                        required
+                                    >
+                                        <option value="">
+                                            選択してください
                                         </option>
-                                    ))}
-                                </select>
+                                        {tasks.map((t) => (
+                                            <option key={t.id} value={t.id}>
+                                                {t.epic_title
+                                                    ? `[${t.epic_title}] `
+                                                    : ''}
+                                                {t.story_title
+                                                    ? `[${t.story_title}] `
+                                                    : ''}
+                                                {t.github_issue_number
+                                                    ? `#${t.github_issue_number} `
+                                                    : ''}
+                                                {t.title}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
                                 {errors.issue_id && (
                                     <p className="mt-1 text-xs text-red-500">
                                         {errors.issue_id}
@@ -581,7 +737,7 @@ export default function DailyScrumIndex({
                                 )}
                                 <button
                                     type="button"
-                                    onClick={() => setShowModal(false)}
+                                    onClick={closeModal}
                                     className="ml-auto rounded-lg border border-sidebar-border/70 px-4 py-2 text-sm hover:bg-muted/50"
                                 >
                                     キャンセル
