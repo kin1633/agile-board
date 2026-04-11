@@ -15,6 +15,7 @@ interface DailyScrumLogRow {
     issue_title: string | null;
     issue_github_number: number | null;
     issue_parent_title: string | null;
+    issue_epic_title: string | null;
     member_id: number | null;
     member_name: string | null;
     progress_percentage: number;
@@ -26,6 +27,7 @@ interface TaskOption {
     title: string;
     parent_issue_id: number | null;
     story_title: string | null;
+    epic_title: string | null;
     github_issue_number: number | null;
 }
 
@@ -311,7 +313,8 @@ export default function DailyScrumIndex({
                 <div className="overflow-hidden rounded-xl border border-sidebar-border/70 bg-card">
                     {logs.length === 0 ? (
                         <div className="py-12 text-center text-sm text-muted-foreground">
-                            この日の記録はありません。「+ 記録追加」から入力してください。
+                            この日の記録はありません。「+
+                            記録追加」から入力してください。
                         </div>
                     ) : (
                         <table className="w-full text-sm">
@@ -340,6 +343,11 @@ export default function DailyScrumIndex({
                                         onClick={() => openEdit(log)}
                                     >
                                         <td className="px-4 py-3">
+                                            {log.issue_epic_title && (
+                                                <div className="mb-0.5 text-xs text-muted-foreground/60">
+                                                    {log.issue_epic_title}
+                                                </div>
+                                            )}
                                             {log.issue_parent_title && (
                                                 <div className="mb-0.5 text-xs text-muted-foreground">
                                                     {log.issue_parent_title}
@@ -348,7 +356,10 @@ export default function DailyScrumIndex({
                                             <div className="font-medium">
                                                 {log.issue_github_number && (
                                                     <span className="mr-1 text-muted-foreground">
-                                                        #{log.issue_github_number}
+                                                        #
+                                                        {
+                                                            log.issue_github_number
+                                                        }
                                                     </span>
                                                 )}
                                                 {log.issue_title}
@@ -444,6 +455,9 @@ export default function DailyScrumIndex({
                                     <option value="">選択してください</option>
                                     {tasks.map((t) => (
                                         <option key={t.id} value={t.id}>
+                                            {t.epic_title
+                                                ? `[${t.epic_title}] `
+                                                : ''}
                                             {t.story_title
                                                 ? `[${t.story_title}] `
                                                 : ''}
@@ -559,9 +573,7 @@ export default function DailyScrumIndex({
                                 {editingLog && (
                                     <button
                                         type="button"
-                                        onClick={() =>
-                                            handleDelete(editingLog)
-                                        }
+                                        onClick={() => handleDelete(editingLog)}
                                         className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-500 hover:bg-red-50"
                                     >
                                         削除

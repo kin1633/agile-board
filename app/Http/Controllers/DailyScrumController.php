@@ -26,7 +26,7 @@ class DailyScrumController extends Controller
         $memberId = $request->query('member_id') !== null ? (int) $request->query('member_id') : null;
 
         // SQLite（テスト環境）では date 型が文字列で保存されるため whereDate を使用
-        $query = DailyScrumLog::with(['member', 'issue.parent'])
+        $query = DailyScrumLog::with(['member', 'issue.parent.epic'])
             ->whereDate('date', $date);
 
         if ($memberId !== null) {
@@ -40,17 +40,19 @@ class DailyScrumController extends Controller
             'issue_title' => $log->issue?->title,
             'issue_github_number' => $log->issue?->github_issue_number,
             'issue_parent_title' => $log->issue?->parent?->title,
+            'issue_epic_title' => $log->issue?->parent?->epic?->title,
             'member_id' => $log->member_id,
             'member_name' => $log->member?->display_name,
             'progress_percentage' => $log->progress_percentage,
             'memo' => $log->memo,
         ]);
 
-        // 現在進行中スプリントに属するタスク（子Issue）のみをドロップダウン用に取得
+        // 現在進行中スプリントに属するオープン中タスク（子Issue）のみをドロップダウン用に取得
         $activeSprint = Sprint::where('state', 'open')->latest('start_date')->first();
         $tasks = Issue::whereNotNull('parent_issue_id')
+            ->where('state', 'open')
             ->when($activeSprint, fn ($q) => $q->where('sprint_id', $activeSprint->id))
-            ->with('parent')
+            ->with(['parent.epic'])
             ->orderBy('title')
             ->get(['id', 'title', 'parent_issue_id', 'github_issue_number', 'sprint_id'])
             ->map(fn (Issue $issue) => [
@@ -58,6 +60,7 @@ class DailyScrumController extends Controller
                 'title' => $issue->title,
                 'parent_issue_id' => $issue->parent_issue_id,
                 'story_title' => $issue->parent?->title,
+                'epic_title' => $issue->parent?->epic?->title,
                 'github_issue_number' => $issue->github_issue_number,
             ]);
 
