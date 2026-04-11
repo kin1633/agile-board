@@ -3,6 +3,7 @@
 use App\Http\Controllers\AttendanceLogController;
 use App\Http\Controllers\Auth\GitHubController;
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\DailyScrumController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EpicController;
 use App\Http\Controllers\IssueController;
@@ -62,6 +63,12 @@ Route::middleware(['auth'])->group(function () {
     // Issue
     Route::get('/stories', [IssueController::class, 'index'])->name('issues.index');
     Route::patch('/issues/{issue}', [IssueController::class, 'update'])->name('issues.update');
+
+    // デイリースクラム（タスク日次進捗記録）
+    Route::get('/daily-scrum', [DailyScrumController::class, 'index'])->name('daily-scrum.index');
+    Route::post('/daily-scrum', [DailyScrumController::class, 'store'])->name('daily-scrum.store');
+    Route::put('/daily-scrum/{dailyScrumLog}', [DailyScrumController::class, 'update'])->name('daily-scrum.update');
+    Route::delete('/daily-scrum/{dailyScrumLog}', [DailyScrumController::class, 'destroy'])->name('daily-scrum.destroy');
 
     // ワークログ（日次実績入力）
     Route::get('/work-logs', [WorkLogController::class, 'index'])->name('work-logs.index');
