@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Epic;
 use App\Models\Issue;
 use App\Models\Repository;
+use App\Services\GitHubApiService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,6 +13,10 @@ use Inertia\Response;
 
 class IssueController extends Controller
 {
+    public function __construct(
+        private readonly GitHubApiService $githubApiService,
+    ) {}
+
     /**
      * ストーリー（親イシュー）一覧をエピック・サブイシューとともに返す。
      *
@@ -106,6 +111,39 @@ class IssueController extends Controller
         ]);
 
         $issue->update($validated);
+
+        return back();
+    }
+
+    /**
+     * GitHub API経由でIssueの状態（open/closed）を変更する。
+     *
+     * 認証ユーザーのgithub_tokenを使用してGitHub APIに書き戻し、
+     * ローカルデータベースも同期する。
+     */
+    public function updateGithubState(Request $request, Issue $issue): RedirectResponse
+    {
+        $validated = $request->validate([
+            'state' => ['required', 'in:open,closed'],
+        ]);
+
+        // GitHub APIで状態を更新（トークンは認証ユーザーから取得）
+        $token = auth()->user()->github_token;
+        if (! $token) {
+            return back()->withErrors(['github_token' => 'GitHub トークンが設定されていません']);
+        }
+
+        try {
+            $this->githubApiService->updateIssueState($issue, $validated['state'], $token);
+        } catch (\Exception $e) {
+            return back()->withErrors(['github' => 'GitHub API エラー: '.$e->getMessage()]);
+        }
+
+        // ローカルデータベースを同期
+        $issue->update([
+            'state' => $validated['state'],
+            'closed_at' => $validated['state'] === 'closed' ? now() : null,
+        ]);
 
         return back();
     }

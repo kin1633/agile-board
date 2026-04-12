@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Epic;
 use App\Models\Issue;
+use App\Models\Member;
 use App\Models\Sprint;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -114,6 +115,8 @@ class SprintController extends Controller
 
     /**
      * スプリント計画画面：スプリント内Issue と バックログIssue の2カラム表示。
+     *
+     * キャパシティ計画用にメンバーの日次作業可能時間とスプリント内の割当ポイント・Issue数を集計する。
      */
     public function plan(Sprint $sprint): Response
     {
@@ -151,6 +154,33 @@ class SprintController extends Controller
                 'labels' => $issue->labels->map(fn ($l) => ['id' => $l->id, 'name' => $l->name])->all(),
             ]);
 
+        // キャパシティ計画：メンバーごとに割当情報を集計
+        $members = Member::query()
+            ->orderBy('display_name')
+            ->get()
+            ->map(function (Member $member) use ($sprint) {
+                $capacityHours = (float) ($member->daily_hours * $sprint->working_days);
+
+                // このメンバーに割当されたストーリー（親Issue）を集計
+                $assignedIssues = Issue::query()
+                    ->where('sprint_id', $sprint->id)
+                    ->where('assignee_login', $member->github_login)
+                    ->whereNull('parent_issue_id')
+                    ->get();
+
+                $assignedPoints = (int) $assignedIssues->sum('story_points');
+                $assignedCount = $assignedIssues->count();
+
+                return [
+                    'github_login' => $member->github_login,
+                    'display_name' => $member->display_name,
+                    'daily_hours' => (float) $member->daily_hours,
+                    'capacity_hours' => $capacityHours,
+                    'assigned_points' => $assignedPoints,
+                    'assigned_issues' => $assignedCount,
+                ];
+            });
+
         return Inertia::render('sprints/plan', [
             'sprint' => [
                 'id' => $sprint->id,
@@ -163,6 +193,7 @@ class SprintController extends Controller
             ],
             'sprintIssues' => $sprintIssues,
             'backlogIssues' => $backlogIssues,
+            'members' => $members,
         ]);
     }
 

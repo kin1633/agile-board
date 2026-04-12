@@ -4,6 +4,7 @@ use App\Http\Controllers\AttendanceLogController;
 use App\Http\Controllers\Auth\GitHubController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\BacklogController;
+use App\Http\Controllers\CfdController;
 use App\Http\Controllers\DailyScrumController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EpicController;
@@ -40,6 +41,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sprints', [SprintController::class, 'index'])->name('sprints.index');
     Route::get('/sprints/{sprint}/plan', [SprintController::class, 'plan'])->name('sprints.plan');
     Route::get('/sprints/{sprint}/board', [SprintController::class, 'board'])->name('sprints.board');
+    Route::get('/sprints/{sprint}/cfd', [CfdController::class, 'show'])->name('sprints.cfd');
     Route::patch('/sprints/{sprint}/issues', [SprintController::class, 'assignIssue'])->name('sprints.assignIssue');
     Route::patch('/sprints/{sprint}/goal', [SprintController::class, 'updateGoal'])->name('sprints.updateGoal');
     Route::post('/sprints/{sprint}/carry-over', [SprintController::class, 'carryOver'])->name('sprints.carryOver');
@@ -81,6 +83,7 @@ Route::middleware(['auth'])->group(function () {
     // Issue
     Route::get('/stories', [IssueController::class, 'index'])->name('issues.index');
     Route::patch('/issues/{issue}', [IssueController::class, 'update'])->name('issues.update');
+    Route::patch('/issues/{issue}/github-state', [IssueController::class, 'updateGithubState'])->name('issues.updateGithubState');
 
     // デイリースクラム（タスク日次進捗記録）
     Route::get('/daily-scrum', [DailyScrumController::class, 'index'])->name('daily-scrum.index');

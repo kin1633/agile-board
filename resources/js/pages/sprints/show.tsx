@@ -15,7 +15,7 @@ import {
     YAxis,
 } from 'recharts';
 import AppLayout from '@/layouts/app-layout';
-import { update as issueUpdate } from '@/routes/issues';
+import { update as issueUpdate, updateGithubState } from '@/routes/issues';
 import sprintRoutes from '@/routes/sprints';
 import { index as workLogsIndex } from '@/routes/work-logs';
 import type { BreadcrumbItem } from '@/types';
@@ -151,6 +151,16 @@ export default function SprintShow({
         router.patch(issueUpdate({ issue: issue.id }).url, {
             epic_id: epicId === '' ? null : Number(epicId),
         });
+    };
+
+    /** GitHub の Issue 状態（open/closed）を切り替える */
+    const handleToggleGithubState = (issue: Issue) => {
+        const newState = issue.state === 'open' ? 'closed' : 'open';
+        router.patch(
+            updateGithubState({ issue: issue.id }).url,
+            { state: newState },
+            { preserveScroll: true },
+        );
     };
 
     /** タスクの予定工数をblur時にPATCH送信する（実績はワークログで管理） */
@@ -344,6 +354,23 @@ export default function SprintShow({
                                                         {label.name}
                                                     </span>
                                                 ))}
+                                                {/* GitHub Issue 状態切り替えボタン */}
+                                                <button
+                                                    onClick={() =>
+                                                        handleToggleGithubState(
+                                                            issue,
+                                                        )
+                                                    }
+                                                    className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+                                                        issue.state === 'open'
+                                                            ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                                            : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                    }`}
+                                                >
+                                                    {issue.state === 'open'
+                                                        ? 'クローズ'
+                                                        : 'オープン'}
+                                                </button>
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                                 {issue.assignees.length > 0 && (
@@ -382,6 +409,25 @@ export default function SprintShow({
                                                                 <span className="text-xs">
                                                                     {task.title}
                                                                 </span>
+                                                                {/* タスク状態切り替えボタン */}
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleToggleGithubState(
+                                                                            task as unknown as Issue,
+                                                                        )
+                                                                    }
+                                                                    className={`rounded-full px-1.5 py-0.5 text-xs font-medium transition-colors ${
+                                                                        task.state ===
+                                                                        'open'
+                                                                            ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                                                            : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                                    }`}
+                                                                >
+                                                                    {task.state ===
+                                                                    'open'
+                                                                        ? 'クローズ'
+                                                                        : 'オープン'}
+                                                                </button>
                                                             </div>
                                                             {/* タスク右側: 日程・担当者・工数・記録リンク */}
                                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
