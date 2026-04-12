@@ -46,6 +46,8 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/sprints/{sprint}/issues', [SprintController::class, 'assignIssue'])->name('sprints.assignIssue');
     Route::patch('/sprints/{sprint}/goal', [SprintController::class, 'updateGoal'])->name('sprints.updateGoal');
     Route::post('/sprints/{sprint}/carry-over', [SprintController::class, 'carryOver'])->name('sprints.carryOver');
+    Route::get('/sprints/{sprint}/complete-preview', [SprintController::class, 'completePreview'])->name('sprints.completePreview');
+    Route::post('/sprints/{sprint}/complete', [SprintController::class, 'complete'])->name('sprints.complete');
     Route::get('/sprints/{sprint}', [SprintController::class, 'show'])->name('sprints.show');
 
     // スプリントレビュー記録
@@ -85,6 +87,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/stories', [IssueController::class, 'index'])->name('issues.index');
     Route::patch('/issues/{issue}', [IssueController::class, 'update'])->name('issues.update');
     Route::patch('/issues/{issue}/github-state', [IssueController::class, 'updateGithubState'])->name('issues.updateGithubState');
+    Route::post('/issues/{issue}/project-status', [IssueController::class, 'updateProjectStatus'])->name('issues.updateProjectStatus');
 
     // デイリースクラム（タスク日次進捗記録）
     Route::get('/daily-scrum', [DailyScrumController::class, 'index'])->name('daily-scrum.index');

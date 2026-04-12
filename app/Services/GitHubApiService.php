@@ -235,4 +235,49 @@ class GitHubApiService
 
         return 'pending';
     }
+
+    /**
+     * GitHub Projects の Status フィールド（SingleSelectField）を更新する。
+     *
+     * updateProjectV2ItemFieldValue mutation を使用して、
+     * 指定した ProjectV2Item の Status フィールド値を変更する。
+     *
+     * @param  string  $projectNodeId  ProjectV2 の GraphQL Node ID
+     * @param  string  $itemId  ProjectV2Item の GraphQL Node ID
+     * @param  string  $fieldId  Status フィールド（ProjectV2SingleSelectField）の GraphQL Node ID
+     * @param  string  $optionId  選択するオプション（ProjectV2SingleSelectFieldOption）の GraphQL Node ID
+     *
+     * @throws RequestException GraphQL エラーの場合
+     */
+    public function updateProjectV2Status(
+        string $projectNodeId,
+        string $itemId,
+        string $fieldId,
+        string $optionId,
+        string $token
+    ): void {
+        $client = app(GitHubGraphQLClient::class);
+
+        $mutation = <<<'GRAPHQL'
+        mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: String!) {
+            updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: { singleSelectOptionId: $value }
+            }) {
+                projectV2Item {
+                    id
+                }
+            }
+        }
+        GRAPHQL;
+
+        $client->mutation($mutation, [
+            'projectId' => $projectNodeId,
+            'itemId' => $itemId,
+            'fieldId' => $fieldId,
+            'value' => $optionId,
+        ], $token);
+    }
 }

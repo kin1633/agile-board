@@ -8,6 +8,7 @@ use App\Models\Member;
 use App\Models\Sprint;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -414,5 +415,102 @@ class SprintController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * スプリント完了処理の事前確認データを返す。
+     *
+     * 未完了（state='open'）の Issue 一覧と、次スプリント候補を JSON で返す。
+     * フロントエンドのモーダルで、各 Issue の処理方法（持ち越し/バックログ/保持）を選択させる。
+     *
+     * Response:
+     *   - issues: array Issue 一覧（id, github_issue_number, title, state, story_points）
+     *   - nextSprints: array 次スプリント候補（id, title, start_date）
+     */
+    public function completePreview(Sprint $sprint): JsonResponse
+    {
+        $openIssues = $sprint->issues
+            ->where('state', 'open')
+            ->map(fn (Issue $issue) => [
+                'id' => $issue->id,
+                'github_issue_number' => $issue->github_issue_number,
+                'title' => $issue->title,
+                'state' => $issue->state,
+                'story_points' => $issue->story_points,
+            ])
+            ->values();
+
+        // 次スプリント候補（スプリント終了後に始まるスプリント）
+        $nextSprints = Sprint::where('start_date', '>', $sprint->end_date)
+            ->orderBy('start_date')
+            ->get(['id', 'title', 'start_date'])
+            ->map(fn (Sprint $s) => [
+                'id' => $s->id,
+                'title' => $s->title,
+                'start_date' => $s->start_date?->toDateString(),
+            ])
+            ->values();
+
+        return response()->json([
+            'issues' => $openIssues,
+            'nextSprints' => $nextSprints,
+        ]);
+    }
+
+    /**
+     * スプリントを完了（state='closed'）にする。
+     *
+     * 未完了 Issue を指定した処理（持ち越し/バックログ/保持）に基づいて移動し、
+     * スプリント状態を 'closed' に変更する。
+     *
+     * Request body:
+     *   - issue_dispositions: object Issue ID をキーにした処理方法
+     *       - issue_id: 'carry_over' | 'backlog' | 'keep'
+     *   - next_sprint_id?: number 持ち越し先スプリント ID（carry_over 選択時は必須）
+     *   - carry_over_reason?: string 持ち越し理由（任意）
+     */
+    public function complete(Request $request, Sprint $sprint): RedirectResponse
+    {
+        $validated = $request->validate([
+            'issue_dispositions' => ['required', 'array'],
+            'issue_dispositions.*' => ['required', 'in:carry_over,backlog,keep'],
+            'next_sprint_id' => ['nullable', 'integer', 'exists:sprints,id'],
+            'carry_over_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        // 未完了 Issue を処理
+        foreach ($validated['issue_dispositions'] as $issueId => $disposition) {
+            $issue = Issue::find($issueId);
+            if (! $issue || $issue->sprint_id !== $sprint->id) {
+                continue;
+            }
+
+            switch ($disposition) {
+                case 'carry_over':
+                    // 次スプリントに移動
+                    $issue->update([
+                        'sprint_id' => $validated['next_sprint_id'],
+                        'carry_over_reason' => $validated['carry_over_reason'] ?? null,
+                    ]);
+                    break;
+
+                case 'backlog':
+                    // バックログに戻す（sprint_id = null）
+                    $issue->update([
+                        'sprint_id' => null,
+                        'carry_over_reason' => null,
+                    ]);
+                    break;
+
+                case 'keep':
+                    // スプリント内に留める（変更なし）
+                    break;
+            }
+        }
+
+        // スプリント状態を 'closed' に更新
+        $sprint->update(['state' => 'closed']);
+
+        return back();
     }
 }

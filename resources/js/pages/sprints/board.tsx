@@ -1,6 +1,8 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 import {
     AlertTriangle,
+    ChevronRight,
     CheckCircle2,
     Clock,
     ExternalLink,
@@ -88,8 +90,65 @@ const COLUMNS = [
 
 type ColumnKey = (typeof COLUMNS)[number]['key'];
 
-function IssueCard({ issue }: { issue: BoardIssue }) {
+function IssueCard({
+    issue,
+    onStatusChange,
+}: {
+    issue: BoardIssue;
+    onStatusChange?: (newStatus: ColumnKey) => void;
+}) {
     const githubUrl = `https://github.com/issues/${issue.github_issue_number}`;
+    const [isUpdating, setIsUpdating] = useState(false);
+
+    // 次のステータスを取得（ステータス進行ボタン用）
+    const getNextStatus = (current: string): ColumnKey | null => {
+        const order: ColumnKey[] = ['Todo', 'In Progress', 'In Review', 'Done'];
+        const currentIndex = order.indexOf(current as ColumnKey);
+        return currentIndex >= 0 && currentIndex < order.length - 1
+            ? order[currentIndex + 1]
+            : null;
+    };
+
+    const handleAdvanceStatus = async () => {
+        const nextStatus = getNextStatus(issue.project_status);
+        if (!nextStatus) return;
+
+        setIsUpdating(true);
+        try {
+            const response = await fetch(`/issues/${issue.id}/project-status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': (
+                        document.querySelector(
+                            'meta[name="csrf-token"]',
+                        ) as HTMLMetaElement
+                    )?.content,
+                },
+                body: JSON.stringify({ status: nextStatus }),
+            });
+
+            if (response.ok) {
+                // ローカルの UI を更新
+                if (onStatusChange) {
+                    onStatusChange(nextStatus);
+                }
+                // ページを再ロードして確実に同期
+                setTimeout(() => router.reload(), 500);
+            } else {
+                const data = await response.json();
+                alert(
+                    `エラー: ${data.error || 'ステータス更新に失敗しました'}`,
+                );
+            }
+        } catch (error) {
+            alert(
+                `エラー: ${error instanceof Error ? error.message : 'ステータス更新に失敗しました'}`,
+            );
+        } finally {
+            setIsUpdating(false);
+        }
+    };
 
     return (
         <div
@@ -229,6 +288,21 @@ function IssueCard({ issue }: { issue: BoardIssue }) {
                             )}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* ステータス進行ボタン */}
+            {getNextStatus(issue.project_status) && (
+                <div className="mt-3 flex justify-end">
+                    <button
+                        onClick={handleAdvanceStatus}
+                        disabled={isUpdating}
+                        className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300 dark:hover:bg-blue-900"
+                        title="次のステータスへ進める"
+                    >
+                        {isUpdating ? '更新中...' : '進める'}
+                        <ChevronRight size={14} />
+                    </button>
                 </div>
             )}
         </div>
