@@ -34,10 +34,20 @@ interface PlanIssue {
     labels: Label[];
 }
 
+interface Member {
+    github_login: string;
+    display_name: string;
+    daily_hours: number;
+    capacity_hours: number;
+    assigned_points: number;
+    assigned_issues: number;
+}
+
 interface Props {
     sprint: SprintInfo;
     sprintIssues: PlanIssue[];
     backlogIssues: PlanIssue[];
+    members: Member[];
 }
 
 /** Issue行の共通コンポーネント */
@@ -94,13 +104,26 @@ function IssueRow({
     );
 }
 
+const DOD_ITEMS = [
+    'コードレビュー完了',
+    'テストが全てパス',
+    'ドキュメント更新済み',
+    'QA確認済み',
+    'ステークホルダー承認済み',
+];
+
 export default function SprintPlan({
     sprint,
     sprintIssues,
     backlogIssues,
+    members,
 }: Props) {
     const [goalInput, setGoalInput] = useState(sprint.goal ?? '');
     const [editingGoal, setEditingGoal] = useState(false);
+    const [dodChecked, setDodChecked] = useState<boolean[]>(
+        Array(DOD_ITEMS.length).fill(false),
+    );
+    const [dodExpanded, setDodExpanded] = useState(true);
 
     /** スプリントゴールをPATCH送信する */
     const saveGoal = () => {
@@ -110,6 +133,16 @@ export default function SprintPlan({
             { preserveScroll: true, onSuccess: () => setEditingGoal(false) },
         );
     };
+
+    // キャパシティ計画：平均ベロシティ値を計算（割当状況の相対比較用）
+    const totalAssignedPoints = members.reduce(
+        (sum, m) => sum + m.assigned_points,
+        0,
+    );
+    const memberCount =
+        members.filter((m) => m.assigned_issues > 0).length || 1;
+    const avgVelocityPerMember =
+        memberCount > 0 ? Math.ceil(totalAssignedPoints / memberCount) : 0;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'スプリント', href: sprintRoutes.index() },
@@ -198,6 +231,156 @@ export default function SprintPlan({
                                 ? sprint.goal
                                 : 'スプリントゴールを設定する'}
                         </button>
+                    )}
+                </div>
+
+                {/* キャパシティセクション（メンバーがいる場合のみ表示） */}
+                {members.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                        <h2 className="text-sm font-semibold">キャパシティ</h2>
+                        <div className="rounded-xl border border-sidebar-border/70 bg-card">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="border-b border-sidebar-border/50 bg-muted/30">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">
+                                                メンバー
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">
+                                                キャパシティ (時間)
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">
+                                                割当ポイント
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">
+                                                割当数
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-sidebar-border/50">
+                                        {members.map((member) => (
+                                            <tr key={member.github_login}>
+                                                <td className="px-4 py-3">
+                                                    <div className="text-sm font-medium">
+                                                        {member.display_name}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {member.daily_hours}{' '}
+                                                        h/day
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-sm">
+                                                    {member.capacity_hours.toFixed(
+                                                        1,
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-sm font-medium">
+                                                    {member.assigned_points >
+                                                    0 ? (
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <div className="h-2 w-24 overflow-hidden rounded-full bg-muted">
+                                                                <div
+                                                                    className="h-full bg-blue-500"
+                                                                    style={{
+                                                                        width: `${Math.min(
+                                                                            100,
+                                                                            (member.assigned_points /
+                                                                                avgVelocityPerMember) *
+                                                                                100,
+                                                                        )}%`,
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <span className="w-12 text-right">
+                                                                {
+                                                                    member.assigned_points
+                                                                }
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground">
+                                                            0
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-sm">
+                                                    {member.assigned_issues}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Definition of Done チェックリスト */}
+                <div className="flex flex-col gap-3">
+                    <button
+                        onClick={() => setDodExpanded((v) => !v)}
+                        className="flex items-center gap-2 text-sm font-semibold hover:text-muted-foreground"
+                    >
+                        <span>{dodExpanded ? '▼' : '▶'}</span>
+                        <span>
+                            DoD チェックリスト (
+                            {dodChecked.filter((v) => v).length}/
+                            {DOD_ITEMS.length})
+                        </span>
+                    </button>
+
+                    {dodExpanded && (
+                        <div className="rounded-xl border border-sidebar-border/70 bg-card p-4">
+                            {/* 進捗バー */}
+                            <div className="mb-4 flex items-center gap-3">
+                                <div className="h-2 w-32 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className="h-full bg-green-500 transition-all"
+                                        style={{
+                                            width: `${(dodChecked.filter((v) => v).length / DOD_ITEMS.length) * 100}%`,
+                                        }}
+                                    />
+                                </div>
+                                <span className="text-xs font-medium text-muted-foreground">
+                                    {dodChecked.filter((v) => v).length}/
+                                    {DOD_ITEMS.length}
+                                </span>
+                            </div>
+
+                            {/* チェックリスト項目 */}
+                            <ul className="space-y-2">
+                                {DOD_ITEMS.map((item, index) => (
+                                    <li
+                                        key={index}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={dodChecked[index]}
+                                            onChange={(e) => {
+                                                const newChecked = [
+                                                    ...dodChecked,
+                                                ];
+                                                newChecked[index] =
+                                                    e.target.checked;
+                                                setDodChecked(newChecked);
+                                            }}
+                                            className="h-4 w-4 rounded border-sidebar-border/70"
+                                        />
+                                        <label className="cursor-pointer text-sm">
+                                            {item}
+                                        </label>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            {/* 全項目完了メッセージ */}
+                            {dodChecked.every((v) => v) && (
+                                <div className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+                                    ✅ 全項目クリア！
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 

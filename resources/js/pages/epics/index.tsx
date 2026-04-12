@@ -64,7 +64,19 @@ interface EpicRow {
     github_status: string | null;
     /** GitHub Projects の Priority フィールド値（同期時に自動設定） */
     github_priority: string | null;
+    /** ロードマップ用: 関連スプリントの最古開始日 */
+    roadmap_start_date: string | null;
+    /** ロードマップ用: 関連スプリントの最新終了日 */
+    roadmap_end_date: string | null;
     issues: EpicStory[];
+}
+
+interface Milestone {
+    id: number;
+    title: string;
+    state: string;
+    start_date: string | null;
+    due_date: string | null;
 }
 
 interface Estimation {
@@ -75,6 +87,7 @@ interface Estimation {
 
 interface Props {
     epics: EpicRow[];
+    milestones: Milestone[];
     estimation: Estimation;
     /** GitHub Projects から取得したステータスの色情報（name => GitHub color enum） */
     statusColors: Record<string, string>;
@@ -194,16 +207,16 @@ function sortEpics(epics: EpicRow[], sortKey: SortKey): EpicRow[] {
         if (sortKey === 'due_date') {
             // due_date なしは末尾
             if (!a.due_date && !b.due_date) {
-return 0;
-}
+                return 0;
+            }
 
             if (!a.due_date) {
-return 1;
-}
+                return 1;
+            }
 
             if (!b.due_date) {
-return -1;
-}
+                return -1;
+            }
 
             return a.due_date.localeCompare(b.due_date);
         }
@@ -626,8 +639,212 @@ function EpicStoryItem({ story }: { story: EpicStory }) {
     );
 }
 
+/** ロードマップ用：全ての日付から日程範囲を計算 */
+function calculateDateRange(
+    milestones: Milestone[],
+    epics: EpicRow[],
+): { minDate: Date; maxDate: Date } | null {
+    const allDates: string[] = [];
+
+    // マイルストーンから日付を収集
+    milestones.forEach((m) => {
+        if (m.start_date) allDates.push(m.start_date);
+        if (m.due_date) allDates.push(m.due_date);
+    });
+
+    // エピックから日付を収集
+    epics.forEach((e) => {
+        if (e.roadmap_start_date) allDates.push(e.roadmap_start_date);
+        if (e.roadmap_end_date) allDates.push(e.roadmap_end_date);
+    });
+
+    if (allDates.length === 0) {
+        return null;
+    }
+
+    const sortedDates = allDates.sort();
+    return {
+        minDate: new Date(sortedDates[0]),
+        maxDate: new Date(sortedDates[sortedDates.length - 1]),
+    };
+}
+
+/** ロードマップ Gantt チャートコンポーネント */
+function RoadmapGantt({
+    milestones,
+    epics,
+}: {
+    milestones: Milestone[];
+    epics: EpicRow[];
+}) {
+    const dateRange = calculateDateRange(milestones, epics);
+
+    if (!dateRange) {
+        return (
+            <div className="rounded-xl border border-sidebar-border/70 bg-card p-6">
+                <p className="text-center text-sm text-muted-foreground">
+                    日程データがありません
+                </p>
+            </div>
+        );
+    }
+
+    const totalDays = Math.ceil(
+        (dateRange.maxDate.getTime() - dateRange.minDate.getTime()) /
+            (1000 * 60 * 60 * 24),
+    );
+
+    // 日付文字列をDate オブジェクトに変換
+    const toDate = (dateStr: string | null): Date | null => {
+        return dateStr ? new Date(dateStr) : null;
+    };
+
+    // 日付のオフセット（日数）を計算
+    const getOffset = (dateStr: string | null): number => {
+        if (!dateStr) return 0;
+        const d = toDate(dateStr);
+        if (!d) return 0;
+        return Math.floor(
+            (d.getTime() - dateRange.minDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+    };
+
+    // 日付範囲内の日数を計算
+    const getDuration = (
+        startStr: string | null,
+        endStr: string | null,
+    ): number => {
+        if (!startStr || !endStr) return 0;
+        const start = toDate(startStr);
+        const end = toDate(endStr);
+        if (!start || !end) return 0;
+        return Math.max(
+            1,
+            Math.ceil(
+                (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+            ) + 1,
+        );
+    };
+
+    return (
+        <div className="rounded-xl border border-sidebar-border/70 bg-card">
+            <div className="overflow-x-auto">
+                <div className="flex">
+                    {/* ラベル列（固定幅） */}
+                    <div className="w-48 flex-shrink-0 border-r border-sidebar-border/50">
+                        <div className="sticky left-0 z-10 bg-muted/30 p-3">
+                            <p className="text-xs font-semibold text-muted-foreground">
+                                マイルストーン / エピック
+                            </p>
+                        </div>
+                        {/* マイルストーン */}
+                        {milestones.map((m) => (
+                            <div
+                                key={`m-${m.id}`}
+                                className="flex items-center border-t border-sidebar-border/50 bg-muted/10 px-3 py-2"
+                            >
+                                <span className="truncate text-xs font-medium">
+                                    {m.title}
+                                </span>
+                            </div>
+                        ))}
+                        {/* エピック */}
+                        {epics.map((e) => (
+                            <div
+                                key={`e-${e.id}`}
+                                className="flex items-center border-t border-sidebar-border/50 px-3 py-2"
+                            >
+                                <span className="truncate text-xs">
+                                    {e.title}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* タイムライン列（スクロール可能） */}
+                    <div className="flex-1">
+                        {/* マイルストーン */}
+                        {milestones.map((m) => {
+                            const offset = getOffset(m.start_date);
+                            const duration = getDuration(
+                                m.start_date,
+                                m.due_date,
+                            );
+                            const offsetPercent =
+                                totalDays > 0 ? (offset / totalDays) * 100 : 0;
+                            const widthPercent =
+                                totalDays > 0
+                                    ? (duration / totalDays) * 100
+                                    : 0;
+
+                            return (
+                                <div
+                                    key={`m-${m.id}`}
+                                    className="relative border-t border-sidebar-border/50 bg-muted/10 py-2"
+                                    style={{ minHeight: '40px' }}
+                                >
+                                    {m.start_date && (
+                                        <div
+                                            className="absolute top-1/2 h-6 -translate-y-1/2 transform rounded bg-purple-400 px-2 py-0.5 text-xs font-semibold text-white shadow-sm"
+                                            style={{
+                                                left: `${offsetPercent}%`,
+                                                width: `${widthPercent}%`,
+                                                minWidth: '120px',
+                                            }}
+                                            title={`${m.start_date} 〜 ${m.due_date ?? ''}`}
+                                        >
+                                            {m.title}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        {/* エピック */}
+                        {epics.map((e) => {
+                            const offset = getOffset(e.roadmap_start_date);
+                            const duration = getDuration(
+                                e.roadmap_start_date,
+                                e.roadmap_end_date,
+                            );
+                            const offsetPercent =
+                                totalDays > 0 ? (offset / totalDays) * 100 : 0;
+                            const widthPercent =
+                                totalDays > 0
+                                    ? (duration / totalDays) * 100
+                                    : 0;
+
+                            return (
+                                <div
+                                    key={`e-${e.id}`}
+                                    className="relative border-t border-sidebar-border/50 py-2"
+                                    style={{ minHeight: '40px' }}
+                                >
+                                    {e.roadmap_start_date && (
+                                        <div
+                                            className="absolute top-1/2 h-6 -translate-y-1/2 transform rounded bg-blue-400 px-2 py-0.5 text-xs font-semibold text-white shadow-sm"
+                                            style={{
+                                                left: `${offsetPercent}%`,
+                                                width: `${widthPercent}%`,
+                                                minWidth: '100px',
+                                            }}
+                                            title={`${e.roadmap_start_date} 〜 ${e.roadmap_end_date ?? ''}`}
+                                        >
+                                            {e.title}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function EpicsIndex({
     epics,
+    milestones,
     estimation,
     statusColors,
     priorityColors,
@@ -748,6 +965,12 @@ export default function EpicsIndex({
                             + 新規エピック（案件）
                         </button>
                     </div>
+                </div>
+
+                {/* ロードマップ */}
+                <div className="flex flex-col gap-3">
+                    <h2 className="text-sm font-semibold">ロードマップ</h2>
+                    <RoadmapGantt milestones={milestones} epics={epics} />
                 </div>
 
                 {/* 見積もりサマリー */}
