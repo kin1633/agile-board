@@ -7,6 +7,7 @@ import {
     CalendarCheck,
     Flag,
     FolderGit2,
+    Inbox,
     LayoutGrid,
     Layers,
     ListChecks,
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import attendanceRoutes from '@/routes/attendance';
+import backlog from '@/routes/backlog';
 import dailyScrum from '@/routes/daily-scrum';
 import epics from '@/routes/epics';
 import issues from '@/routes/issues';
@@ -54,6 +56,11 @@ const mainNavItems: NavItem[] = [
         title: 'ストーリー・タスク',
         href: issues.index().url,
         icon: ListChecks,
+    },
+    {
+        title: 'バックログ',
+        href: backlog.index().url,
+        icon: Inbox,
     },
     {
         title: 'マイルストーン',

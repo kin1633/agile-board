@@ -23,7 +23,8 @@ test('デイリースクラム一覧が表示される', function () {
             ->has('tasks')
             ->has('members')
             ->has('filters')
-            ->has('activeSprint')
+            ->has('sprints')
+            ->has('selectedSprint')
             ->has('currentMemberId')
         );
 });
@@ -186,6 +187,35 @@ test('デイリースクラムログを更新できる', function () {
 
     expect($log->fresh()->progress_percentage)->toBe(80);
     expect($log->fresh()->memo)->toBe('更新済みメモ');
+});
+
+test('sprint_id フィルタで指定スプリントのタスクのみ返される', function () {
+    $user = User::factory()->create();
+    $repo = Repository::factory()->create();
+    $sprintA = Sprint::factory()->create(['state' => 'open']);
+    $sprintB = Sprint::factory()->create(['state' => 'closed']);
+    $parent = Issue::factory()->for($repo)->create(['parent_issue_id' => null]);
+    Issue::factory()->for($repo)->create(['parent_issue_id' => $parent->id, 'sprint_id' => $sprintA->id, 'state' => 'open']);
+    $taskB = Issue::factory()->for($repo)->create(['parent_issue_id' => $parent->id, 'sprint_id' => $sprintB->id, 'state' => 'open']);
+
+    $this->actingAs($user)
+        ->get(route('daily-scrum.index', ['sprint_id' => $sprintB->id]))
+        ->assertInertia(fn ($page) => $page
+            ->has('tasks', 1)
+            ->where('tasks.0.id', $taskB->id)
+            ->where('selectedSprint.id', $sprintB->id)
+        );
+});
+
+test('sprint_id 未指定時はアクティブスプリントが selectedSprint になる', function () {
+    $user = User::factory()->create();
+    $activeSprint = Sprint::factory()->create(['state' => 'open']);
+
+    $this->actingAs($user)
+        ->get(route('daily-scrum.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('selectedSprint.id', $activeSprint->id)
+        );
 });
 
 test('デイリースクラムログを削除できる', function () {

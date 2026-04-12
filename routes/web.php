@@ -3,6 +3,7 @@
 use App\Http\Controllers\AttendanceLogController;
 use App\Http\Controllers\Auth\GitHubController;
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\BacklogController;
 use App\Http\Controllers\DailyScrumController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EpicController;
@@ -10,7 +11,9 @@ use App\Http\Controllers\IssueController;
 use App\Http\Controllers\MilestoneController;
 use App\Http\Controllers\RetrospectiveController;
 use App\Http\Controllers\SprintController;
+use App\Http\Controllers\SprintReviewController;
 use App\Http\Controllers\SyncController;
+use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\WorkLogController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -35,7 +38,18 @@ Route::middleware(['auth'])->group(function () {
 
     // スプリント
     Route::get('/sprints', [SprintController::class, 'index'])->name('sprints.index');
+    Route::get('/sprints/{sprint}/plan', [SprintController::class, 'plan'])->name('sprints.plan');
+    Route::get('/sprints/{sprint}/board', [SprintController::class, 'board'])->name('sprints.board');
+    Route::patch('/sprints/{sprint}/issues', [SprintController::class, 'assignIssue'])->name('sprints.assignIssue');
+    Route::patch('/sprints/{sprint}/goal', [SprintController::class, 'updateGoal'])->name('sprints.updateGoal');
+    Route::post('/sprints/{sprint}/carry-over', [SprintController::class, 'carryOver'])->name('sprints.carryOver');
     Route::get('/sprints/{sprint}', [SprintController::class, 'show'])->name('sprints.show');
+
+    // スプリントレビュー記録
+    Route::get('/sprints/{sprint}/review', [SprintReviewController::class, 'index'])->name('sprints.review');
+    Route::post('/sprints/{sprint}/reviews', [SprintReviewController::class, 'store'])->name('sprints.reviews.store');
+    Route::patch('/sprints/{sprint}/reviews/{review}', [SprintReviewController::class, 'update'])->name('sprints.reviews.update');
+    Route::delete('/sprints/{sprint}/reviews/{review}', [SprintReviewController::class, 'destroy'])->name('sprints.reviews.destroy');
 
     // マイルストーン（自動生成のため create/store/destroy ルートは存在しない）
     Route::get('/milestones', [MilestoneController::class, 'index'])->name('milestones.index');
@@ -59,6 +73,10 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/retrospectives', [RetrospectiveController::class, 'store'])->name('retrospectives.store');
     Route::put('/retrospectives/{retrospective}', [RetrospectiveController::class, 'update'])->name('retrospectives.update');
     Route::delete('/retrospectives/{retrospective}', [RetrospectiveController::class, 'destroy'])->name('retrospectives.destroy');
+
+    // バックログ（スプリント未割当Issue管理）
+    Route::get('/backlog', [BacklogController::class, 'index'])->name('backlog.index');
+    Route::patch('/issues/{issue}/sprint', [BacklogController::class, 'assignToSprint'])->name('issues.assignSprint');
 
     // Issue
     Route::get('/stories', [IssueController::class, 'index'])->name('issues.index');
@@ -85,5 +103,8 @@ Route::middleware(['auth'])->group(function () {
     // GitHub 同期
     Route::post('/sync', SyncController::class)->name('sync');
 });
+
+// GitHub Webhook（認証不要: HMAC-SHA256 署名で検証）
+Route::post('/webhooks/github', [WebhookController::class, 'handle'])->name('webhooks.github');
 
 require __DIR__.'/settings.php';

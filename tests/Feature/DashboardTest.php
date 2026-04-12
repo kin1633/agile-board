@@ -19,6 +19,7 @@ test('認証済みユーザーはダッシュボードにアクセスできる',
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('dashboard')
+            ->has('sprints')
             ->has('metrics')
             ->has('burndownData')
             ->has('kptSummary')
@@ -33,7 +34,7 @@ test('進行中スプリントがない場合はnullが渡される', function (
         ->get(route('dashboard'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->where('currentSprint', null)
+            ->where('selectedSprint', null)
             ->where('metrics.totalPoints', 0)
             ->where('metrics.remainingDays', 0)
         );
@@ -86,6 +87,21 @@ test('KPTサマリーが正しく集計される', function () {
             ->where('kptSummary.keep', 2)
             ->where('kptSummary.problem', 1)
             ->where('kptSummary.try', 1)
+        );
+});
+
+test('sprint_idクエリパラメータで表示スプリントを切り替えられる', function () {
+    $user = User::factory()->create();
+    $milestone = Milestone::factory()->create();
+    $sprint1 = Sprint::factory()->for($milestone)->create(['state' => 'open', 'title' => 'Sprint A']);
+    $sprint2 = Sprint::factory()->for($milestone)->create(['state' => 'closed', 'title' => 'Sprint B']);
+
+    $this->actingAs($user)
+        ->get(route('dashboard', ['sprint_id' => $sprint2->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('selectedSprint.id', $sprint2->id)
+            ->where('selectedSprint.title', 'Sprint B')
         );
 });
 

@@ -101,6 +101,8 @@ class IssueController extends Controller
             'story_points' => ['nullable', 'integer', 'min:0'],
             'exclude_velocity' => ['nullable', 'boolean'],
             'estimated_hours' => ['nullable', 'numeric', 'min:0', 'max:9999.99'],
+            'is_blocker' => ['nullable', 'boolean'],
+            'blocker_reason' => ['nullable', 'string', 'max:500'],
         ]);
 
         $issue->update($validated);

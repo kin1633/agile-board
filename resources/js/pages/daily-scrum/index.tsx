@@ -36,9 +36,18 @@ interface MemberOption {
     display_name: string;
 }
 
-interface ActiveSprint {
+interface SprintOption {
     id: number;
     title: string;
+    state: string;
+    start_date: string | null;
+    end_date: string | null;
+}
+
+interface SelectedSprint {
+    id: number;
+    title: string;
+    state: string;
 }
 
 interface Props {
@@ -46,7 +55,8 @@ interface Props {
     tasks: TaskOption[];
     members: MemberOption[];
     currentMemberId: number | null;
-    activeSprint: ActiveSprint | null;
+    sprints: SprintOption[];
+    selectedSprint: SelectedSprint | null;
     filters: { date: string; member_id: number | null };
 }
 
@@ -103,7 +113,8 @@ export default function DailyScrumIndex({
     tasks,
     members,
     currentMemberId,
-    activeSprint,
+    sprints,
+    selectedSprint,
     filters,
 }: Props) {
     const [showModal, setShowModal] = React.useState(false);
@@ -127,6 +138,19 @@ export default function DailyScrumIndex({
     /** issue_id → ログ行 の Map（タスク一覧で記録済み判定に使用） */
     const logByTaskId = new Map<number, DailyScrumLogRow>();
     logs.forEach((log) => logByTaskId.set(log.issue_id, log));
+
+    /** スプリント切り替え時にページを再読み込みする */
+    const handleSprintChange = (sprintId: number) => {
+        router.get(
+            dailyScrum.index().url,
+            {
+                sprint_id: sprintId,
+                date: filters.date,
+                member_id: filters.member_id || undefined,
+            },
+            { preserveScroll: true, replace: true },
+        );
+    };
 
     /** フィルタ変更時にページを再読み込みする */
     const applyFilter = (date: string, memberId: string) => {
@@ -292,14 +316,24 @@ export default function DailyScrumIndex({
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {activeSprint && (
-                            <span className="text-sm text-muted-foreground">
-                                スプリント:{' '}
-                                <span className="font-medium text-foreground">
-                                    {activeSprint.title}
-                                </span>
-                            </span>
-                        )}
+                        {/* スプリント切り替えプルダウン */}
+                        <select
+                            value={selectedSprint?.id ?? ''}
+                            onChange={(e) =>
+                                handleSprintChange(Number(e.target.value))
+                            }
+                            className="rounded-lg border border-sidebar-border/70 bg-background px-3 py-1.5 text-sm"
+                        >
+                            {sprints.length === 0 && (
+                                <option value="">スプリントなし</option>
+                            )}
+                            {sprints.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.title}
+                                    {s.state === 'open' ? ' (進行中)' : ''}
+                                </option>
+                            ))}
+                        </select>
                         {/* スプリント外タスクや特殊ケース用のフォールバック */}
                         <button
                             onClick={openCreate}
@@ -346,9 +380,9 @@ export default function DailyScrumIndex({
                             <span className="text-sm font-medium">
                                 タスク一覧
                             </span>
-                            {activeSprint && (
+                            {selectedSprint && (
                                 <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                                    {activeSprint.title}
+                                    {selectedSprint.title}
                                 </span>
                             )}
                         </div>
@@ -357,9 +391,17 @@ export default function DailyScrumIndex({
                         </span>
                     </div>
 
+                    {/* クローズ済みスプリントにオープン中タスクが残っている場合は警告表示 */}
+                    {selectedSprint?.state === 'closed' && tasks.length > 0 && (
+                        <div className="border-b border-yellow-400/30 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-500/20 dark:bg-yellow-950/30 dark:text-yellow-300">
+                            ⚠ このスプリントはクローズ済みですが、{tasks.length}{' '}
+                            件のオープン中タスクがあります。対応を確認してください。
+                        </div>
+                    )}
+
                     {tasks.length === 0 ? (
                         <div className="py-10 text-center text-sm text-muted-foreground">
-                            アクティブスプリントのオープン中タスクがありません
+                            このスプリントのオープン中タスクがありません
                         </div>
                     ) : (
                         <div className="divide-y divide-sidebar-border/40">
@@ -386,7 +428,10 @@ export default function DailyScrumIndex({
                                             <div className="text-sm font-medium">
                                                 {task.github_issue_number && (
                                                     <span className="mr-1 text-muted-foreground">
-                                                        #{task.github_issue_number}
+                                                        #
+                                                        {
+                                                            task.github_issue_number
+                                                        }
                                                     </span>
                                                 )}
                                                 {task.title}
@@ -405,8 +450,10 @@ export default function DailyScrumIndex({
                                                             }}
                                                         />
                                                     </div>
-                                                    <span className="w-10 text-right tabular-nums text-xs">
-                                                        {log.progress_percentage}
+                                                    <span className="w-10 text-right text-xs tabular-nums">
+                                                        {
+                                                            log.progress_percentage
+                                                        }
                                                         %
                                                     </span>
                                                 </div>
@@ -416,7 +463,9 @@ export default function DailyScrumIndex({
                                                     </span>
                                                 )}
                                                 <button
-                                                    onClick={() => openEdit(log)}
+                                                    onClick={() =>
+                                                        openEdit(log)
+                                                    }
                                                     className="rounded-lg border border-sidebar-border/70 px-3 py-1 text-xs hover:bg-muted/50"
                                                 >
                                                     編集
@@ -591,7 +640,10 @@ export default function DailyScrumIndex({
                                         )}
                                         {selectedTask.github_issue_number && (
                                             <span className="mr-1 text-muted-foreground">
-                                                #{selectedTask.github_issue_number}
+                                                #
+                                                {
+                                                    selectedTask.github_issue_number
+                                                }
                                             </span>
                                         )}
                                         {selectedTask.title}

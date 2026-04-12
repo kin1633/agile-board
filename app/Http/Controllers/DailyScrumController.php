@@ -25,6 +25,20 @@ class DailyScrumController extends Controller
             : Carbon::today()->toDateString();
         $memberId = $request->query('member_id') !== null ? (int) $request->query('member_id') : null;
 
+        // スプリント選択：クエリパラメータ → 期間中のスプリント → openスプリント → 最新スプリントの順でフォールバック
+        $selectedSprintId = $request->integer('sprint_id') ?: null;
+        if ($selectedSprintId) {
+            $selectedSprint = Sprint::find($selectedSprintId);
+        } else {
+            $today = now()->toDateString();
+            $selectedSprint = Sprint::where('start_date', '<=', $today)
+                ->where('end_date', '>=', $today)
+                ->orderByDesc('end_date')
+                ->first()
+                ?? Sprint::where('state', 'open')->orderByDesc('end_date')->first()
+                ?? Sprint::orderByDesc('end_date')->first();
+        }
+
         // SQLite（テスト環境）では date 型が文字列で保存されるため whereDate を使用
         $query = DailyScrumLog::with(['member', 'issue.parent.epic'])
             ->whereDate('date', $date);
@@ -47,11 +61,10 @@ class DailyScrumController extends Controller
             'memo' => $log->memo,
         ]);
 
-        // 現在進行中スプリントに属するオープン中タスク（子Issue）のみをドロップダウン用に取得
-        $activeSprint = Sprint::where('state', 'open')->latest('start_date')->first();
+        // 選択スプリントに属するオープン中タスク（子Issue）のみを取得
         $tasks = Issue::whereNotNull('parent_issue_id')
             ->where('state', 'open')
-            ->when($activeSprint, fn ($q) => $q->where('sprint_id', $activeSprint->id))
+            ->when($selectedSprint, fn ($q) => $q->where('sprint_id', $selectedSprint->id))
             ->with(['parent.epic'])
             ->orderBy('title')
             ->get(['id', 'title', 'parent_issue_id', 'github_issue_number', 'sprint_id'])
@@ -69,12 +82,26 @@ class DailyScrumController extends Controller
         // デフォルトのメンバーID: ログインユーザーに紐づくメンバー
         $currentMemberId = Member::where('user_id', Auth::id())->value('id');
 
+        // 全スプリントをプルダウン用に取得（新しい順）
+        $sprints = Sprint::orderByDesc('end_date')->get(['id', 'title', 'state', 'start_date', 'end_date']);
+
         return Inertia::render('daily-scrum/index', [
             'logs' => $logs,
             'tasks' => $tasks,
             'members' => $members,
             'currentMemberId' => $currentMemberId,
-            'activeSprint' => $activeSprint ? ['id' => $activeSprint->id, 'title' => $activeSprint->title] : null,
+            'sprints' => $sprints->map(fn (Sprint $s) => [
+                'id' => $s->id,
+                'title' => $s->title,
+                'state' => $s->state,
+                'start_date' => $s->start_date?->toDateString(),
+                'end_date' => $s->end_date?->toDateString(),
+            ]),
+            'selectedSprint' => $selectedSprint ? [
+                'id' => $selectedSprint->id,
+                'title' => $selectedSprint->title,
+                'state' => $selectedSprint->state,
+            ] : null,
             'filters' => ['date' => $date, 'member_id' => $memberId],
         ]);
     }
