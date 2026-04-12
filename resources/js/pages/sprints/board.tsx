@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import sprintRoutes from '@/routes/sprints';
@@ -159,7 +159,9 @@ export default function SprintBoard({ sprint, issues }: Props) {
                 {/* ヘッダー */}
                 <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                        <h1 className="text-xl font-semibold">{sprint.title}</h1>
+                        <h1 className="text-xl font-semibold">
+                            {sprint.title}
+                        </h1>
                         {sprint.goal && (
                             <p className="mt-1 text-sm text-muted-foreground">
                                 🎯 {sprint.goal}
@@ -195,6 +197,7 @@ export default function SprintBoard({ sprint, issues }: Props) {
                 <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     {COLUMNS.map((col) => {
                         const colIssues = issuesByColumn(col.key);
+
                         return (
                             <div key={col.key} className="flex flex-col gap-3">
                                 {/* 列ヘッダー */}
