@@ -62,6 +62,7 @@ class SprintController extends Controller
             'story_points' => $issue->story_points,
             'exclude_velocity' => $issue->exclude_velocity,
             'closed_at' => $issue->closed_at?->toDateString(),
+            'carry_over_reason' => $issue->carry_over_reason,
             'epic' => $issue->epic ? ['id' => $issue->epic->id, 'title' => $issue->epic->title] : null,
             'labels' => $issue->labels->map(fn ($l) => ['id' => $l->id, 'name' => $l->name])->all(),
             'sub_issues' => $issue->subIssues->map(function ($task) {
@@ -94,6 +95,16 @@ class SprintController extends Controller
         // エピック選択UIで使用するため全エピックをIDとタイトルのみ渡す
         $epics = Epic::orderBy('title')->get(['id', 'title']);
 
+        // 持ち越し先候補スプリント（現スプリント終了後に始まるスプリント）
+        $futureSprints = Sprint::where('start_date', '>', $sprint->end_date)
+            ->orderBy('start_date')
+            ->get(['id', 'title', 'start_date'])
+            ->map(fn ($s) => [
+                'id' => $s->id,
+                'title' => $s->title,
+                'start_date' => $s->start_date?->toDateString(),
+            ]);
+
         return Inertia::render('sprints/show', [
             'sprint' => [
                 'id' => $sprint->id,
@@ -110,6 +121,7 @@ class SprintController extends Controller
             'burndownData' => $burndownData,
             'assigneeWorkload' => $assigneeWorkload,
             'epics' => $epics,
+            'futureSprints' => $futureSprints,
         ]);
     }
 
@@ -282,7 +294,7 @@ class SprintController extends Controller
      */
     public function board(Sprint $sprint): Response
     {
-        $sprint->load(['issues.labels', 'issues.epic', 'issues.pullRequests']);
+        $sprint->load(['issues.labels', 'issues.epic', 'issues.pullRequests', 'issues.repository']);
 
         // ストーリー（親Issue）をステータス別に分類
         $issues = $sprint->issues
@@ -298,7 +310,26 @@ class SprintController extends Controller
                 'is_blocker' => $issue->is_blocker,
                 'epic' => $issue->epic ? ['id' => $issue->epic->id, 'title' => $issue->epic->title] : null,
                 'labels' => $issue->labels->map(fn ($l) => ['id' => $l->id, 'name' => $l->name])->all(),
+                'pull_requests' => $issue->pullRequests->map(fn ($pr) => [
+                    'id' => $pr->id,
+                    'github_pr_number' => $pr->github_pr_number,
+                    'title' => $pr->title,
+                    'state' => $pr->state,
+                    'review_state' => $pr->review_state,
+                    'ci_status' => $pr->ci_status,
+                    'github_url' => $pr->github_url,
+                ])->all(),
+                'repository_id' => $issue->repository_id,
             ]);
+
+        // PR同期対象のリポジトリを集計
+        $repositories = $sprint->issues
+            ->whereNull('parent_issue_id')
+            ->map(fn ($issue) => $issue->repository)
+            ->filter()
+            ->unique('id')
+            ->map(fn ($repo) => ['id' => $repo->id, 'name' => $repo->name])
+            ->values();
 
         return Inertia::render('sprints/board', [
             'sprint' => [
@@ -310,6 +341,7 @@ class SprintController extends Controller
                 'state' => $sprint->state,
             ],
             'issues' => $issues->values(),
+            'repositories' => $repositories,
         ]);
     }
 
@@ -335,11 +367,13 @@ class SprintController extends Controller
      *
      * 次スプリントは start_date 昇順で現スプリントの翌スプリントを選ぶ。
      * target_sprint_id を明示的に指定することも可能。
+     * 持ち越し理由を記録することで、後続のレビューで背景を把握できる。
      */
     public function carryOver(Request $request, Sprint $sprint): RedirectResponse
     {
         $validated = $request->validate([
             'target_sprint_id' => ['nullable', 'integer', 'exists:sprints,id'],
+            'carry_over_reason' => ['nullable', 'string', 'max:500'],
         ]);
 
         // 次スプリントを特定する（指定なければ直近の未来スプリント）
@@ -354,7 +388,10 @@ class SprintController extends Controller
 
         Issue::where('sprint_id', $sprint->id)
             ->where('state', 'open')
-            ->update(['sprint_id' => $targetSprintId]);
+            ->update([
+                'sprint_id' => $targetSprintId,
+                'carry_over_reason' => $validated['carry_over_reason'] ?? null,
+            ]);
 
         return back();
     }

@@ -1,7 +1,15 @@
-import { Head, Link } from '@inertiajs/react';
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    AlertTriangle,
+    CheckCircle2,
+    Clock,
+    ExternalLink,
+    RefreshCw,
+    XCircle,
+} from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import sprintRoutes from '@/routes/sprints';
+import repositoriesRoutes from '@/routes/repositories';
 import type { BreadcrumbItem } from '@/types';
 
 interface SprintInfo {
@@ -23,6 +31,16 @@ interface Epic {
     title: string;
 }
 
+interface PullRequest {
+    id: number;
+    github_pr_number: number;
+    title: string;
+    state: string;
+    review_state: string | null;
+    ci_status: string | null;
+    github_url: string | null;
+}
+
 interface BoardIssue {
     id: number;
     github_issue_number: number;
@@ -34,11 +52,18 @@ interface BoardIssue {
     is_blocker: boolean;
     epic: Epic | null;
     labels: Label[];
+    pull_requests: PullRequest[];
+}
+
+interface Repository {
+    id: number;
+    name: string;
 }
 
 interface Props {
     sprint: SprintInfo;
     issues: BoardIssue[];
+    repositories: Repository[];
 }
 
 /** カンバン列の定義 */
@@ -132,11 +157,85 @@ function IssueCard({ issue }: { issue: BoardIssue }) {
                     </span>
                 )}
             </div>
+
+            {/* PR一覧 */}
+            {issue.pull_requests.length > 0 && (
+                <div className="mt-2 space-y-1">
+                    {issue.pull_requests.map((pr) => (
+                        <div key={pr.id} className="flex items-center gap-2">
+                            <a
+                                href={pr.github_url || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex flex-1 items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground hover:bg-muted/70"
+                            >
+                                <span className="truncate">
+                                    #{pr.github_pr_number} {pr.title}
+                                </span>
+                                {/* ステータスバッジ */}
+                                <span
+                                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium whitespace-nowrap ${
+                                        pr.state === 'merged'
+                                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                                            : pr.state === 'closed'
+                                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                              : pr.review_state === 'approved'
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                                : pr.review_state ===
+                                                    'changes_requested'
+                                                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
+                                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                                    }`}
+                                >
+                                    {pr.state === 'merged' && '✓ Merged'}
+                                    {pr.state === 'closed' && 'Closed'}
+                                    {pr.state === 'open' &&
+                                        pr.review_state === 'approved' &&
+                                        '✓ Approved'}
+                                    {pr.state === 'open' &&
+                                        pr.review_state ===
+                                            'changes_requested' &&
+                                        '⚠ Changes'}
+                                    {pr.state === 'open' &&
+                                        !pr.review_state &&
+                                        'Open'}
+                                </span>
+                            </a>
+                            {/* CI ステータスアイコン */}
+                            {pr.ci_status && (
+                                <div className="flex items-center">
+                                    {pr.ci_status === 'success' && (
+                                        <CheckCircle2
+                                            size={14}
+                                            className="text-green-600 dark:text-green-400"
+                                            title="CI成功"
+                                        />
+                                    )}
+                                    {pr.ci_status === 'failure' && (
+                                        <XCircle
+                                            size={14}
+                                            className="text-red-600 dark:text-red-400"
+                                            title="CI失敗"
+                                        />
+                                    )}
+                                    {pr.ci_status === 'pending' && (
+                                        <Clock
+                                            size={14}
+                                            className="text-yellow-600 dark:text-yellow-400"
+                                            title="CI実行中"
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
 
-export default function SprintBoard({ sprint, issues }: Props) {
+export default function SprintBoard({ sprint, issues, repositories }: Props) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'スプリント', href: sprintRoutes.index() },
         {
@@ -151,6 +250,11 @@ export default function SprintBoard({ sprint, issues }: Props) {
         issues.filter((i) => i.project_status === columnKey);
 
     const blockerCount = issues.filter((i) => i.is_blocker).length;
+
+    // PR同期を実行
+    const handleSyncPrs = (repositoryId: number) => {
+        router.post(repositoriesRoutes.syncPrs(repositoryId).url, {});
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -171,13 +275,25 @@ export default function SprintBoard({ sprint, issues }: Props) {
                             {sprint.start_date} 〜 {sprint.end_date}
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         {blockerCount > 0 && (
                             <span className="flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-300">
                                 <AlertTriangle size={12} />
                                 ブロッカー {blockerCount} 件
                             </span>
                         )}
+                        {repositories.length > 0 &&
+                            repositories.map((repo) => (
+                                <button
+                                    key={repo.id}
+                                    onClick={() => handleSyncPrs(repo.id)}
+                                    className="flex items-center gap-1 rounded-md border border-sidebar-border/70 px-3 py-1.5 text-sm transition-colors hover:bg-muted/50"
+                                    title={`${repo.name} のPRを同期する`}
+                                >
+                                    <RefreshCw size={14} />
+                                    PR同期
+                                </button>
+                            ))}
                         <Link
                             href={sprintRoutes.show({ sprint: sprint.id }).url}
                             className="rounded-md border border-sidebar-border/70 px-3 py-1.5 text-sm transition-colors hover:bg-muted/50"

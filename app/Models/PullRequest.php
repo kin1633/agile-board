@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'repository_id', 'issue_id', 'github_pr_number', 'title', 'state',
     'author_login', 'review_state', 'merged_at', 'head_branch', 'base_branch',
-    'github_url', 'synced_at',
+    'github_url', 'synced_at', 'ci_status',
 ])]
 class PullRequest extends Model
 {

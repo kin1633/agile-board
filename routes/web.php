@@ -10,6 +10,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EpicController;
 use App\Http\Controllers\IssueController;
 use App\Http\Controllers\MilestoneController;
+use App\Http\Controllers\PrSyncController;
 use App\Http\Controllers\RetrospectiveController;
 use App\Http\Controllers\SprintController;
 use App\Http\Controllers\SprintReviewController;
@@ -105,6 +106,9 @@ Route::middleware(['auth'])->group(function () {
 
     // GitHub 同期
     Route::post('/sync', SyncController::class)->name('sync');
+
+    // PR同期
+    Route::post('/repositories/{repository}/sync-prs', [PrSyncController::class, 'sync'])->name('repositories.syncPrs');
 });
 
 // GitHub Webhook（認証不要: HMAC-SHA256 署名で検証）
