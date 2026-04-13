@@ -1,5 +1,4 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     AlertTriangle,
     ChevronRight,
@@ -9,9 +8,10 @@ import {
     RefreshCw,
     XCircle,
 } from 'lucide-react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
-import sprintRoutes from '@/routes/sprints';
 import repositoriesRoutes from '@/routes/repositories';
+import sprintRoutes from '@/routes/sprints';
 import type { BreadcrumbItem } from '@/types';
 
 interface SprintInfo {
@@ -66,6 +66,7 @@ interface Props {
     sprint: SprintInfo;
     issues: BoardIssue[];
     repositories: Repository[];
+    wipLimits: Record<string, number>;
 }
 
 /** カンバン列の定義 */
@@ -104,6 +105,7 @@ function IssueCard({
     const getNextStatus = (current: string): ColumnKey | null => {
         const order: ColumnKey[] = ['Todo', 'In Progress', 'In Review', 'Done'];
         const currentIndex = order.indexOf(current as ColumnKey);
+
         return currentIndex >= 0 && currentIndex < order.length - 1
             ? order[currentIndex + 1]
             : null;
@@ -111,9 +113,13 @@ function IssueCard({
 
     const handleAdvanceStatus = async () => {
         const nextStatus = getNextStatus(issue.project_status);
-        if (!nextStatus) return;
+
+        if (!nextStatus) {
+return;
+}
 
         setIsUpdating(true);
+
         try {
             const response = await fetch(`/issues/${issue.id}/project-status`, {
                 method: 'POST',
@@ -133,6 +139,7 @@ function IssueCard({
                 if (onStatusChange) {
                     onStatusChange(nextStatus);
                 }
+
                 // ページを再ロードして確実に同期
                 setTimeout(() => router.reload(), 500);
             } else {
@@ -309,7 +316,12 @@ function IssueCard({
     );
 }
 
-export default function SprintBoard({ sprint, issues, repositories }: Props) {
+export default function SprintBoard({
+    sprint,
+    issues,
+    repositories,
+    wipLimits,
+}: Props) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'スプリント', href: sprintRoutes.index() },
         {
@@ -387,19 +399,40 @@ export default function SprintBoard({ sprint, issues, repositories }: Props) {
                 <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     {COLUMNS.map((col) => {
                         const colIssues = issuesByColumn(col.key);
+                        const limit = wipLimits[col.key];
+                        // WIP制限超過判定：制限値が0を超えていて、Issue数が制限値を超えている場合
+                        const isOverWip = limit > 0 && colIssues.length > limit;
 
                         return (
                             <div key={col.key} className="flex flex-col gap-3">
                                 {/* 列ヘッダー */}
                                 <div
-                                    className={`flex items-center justify-between rounded-lg px-3 py-2 ${col.color}`}
+                                    className={`flex items-center justify-between rounded-lg px-3 py-2 ${
+                                        isOverWip
+                                            ? 'bg-red-100 dark:bg-red-950'
+                                            : col.color
+                                    }`}
                                 >
                                     <span className="text-sm font-semibold">
                                         {col.label}
                                     </span>
-                                    <span className="rounded-full bg-background/60 px-2 py-0.5 text-xs font-medium">
-                                        {colIssues.length}
-                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        {isOverWip && (
+                                            <span className="text-xs font-medium text-red-600 dark:text-red-400">
+                                                WIP超過
+                                            </span>
+                                        )}
+                                        <span
+                                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                isOverWip
+                                                    ? 'bg-red-200 text-red-700 dark:bg-red-900 dark:text-red-300'
+                                                    : 'bg-background/60'
+                                            }`}
+                                        >
+                                            {colIssues.length}
+                                            {limit > 0 ? `/${limit}` : ''}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {/* カード一覧 */}

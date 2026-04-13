@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, ExternalLink, Kanban, ListTodo, X } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Kanban, ListTodo } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
     Bar,
@@ -96,6 +96,7 @@ interface Props {
     burndownData: BurndownPoint[];
     assigneeWorkload: AssigneeWorkload[];
     epics: EpicOption[];
+    goalIssueIds: number[];
 }
 
 type Tab = 'issues' | 'burndown' | 'workload';
@@ -106,29 +107,12 @@ export default function SprintShow({
     burndownData,
     assigneeWorkload,
     epics,
+    goalIssueIds,
 }: Props) {
     const [activeTab, setActiveTab] = useState<Tab>('issues');
     const [burndownMode, setBurndownMode] = useState<'points' | 'count'>(
         'points',
     );
-    const [showCompleteModal, setShowCompleteModal] = useState(false);
-    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-    const [openIssuesPreview, setOpenIssuesPreview] = useState<Array<{
-        id: number;
-        github_issue_number: number;
-        title: string;
-        state: string;
-        story_points: number | null;
-    }> | null>(null);
-    const [nextSprints, setNextSprints] = useState<
-        Array<{ id: number; title: string; start_date: string }>
-    >([]);
-    const [dispositions, setDispositions] = useState<
-        Record<number, 'carry_over' | 'backlog' | 'keep'>
-    >({});
-    const [nextSprintId, setNextSprintId] = useState<number | null>(null);
-    const [carryOverReason, setCarryOverReason] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
 
     /** 今日の日付文字列（バーンダウンチャートの今日マーカー用） */
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -141,20 +125,26 @@ export default function SprintShow({
     const projectionData = useMemo(() => {
         const key = burndownMode === 'points' ? 'actual' : 'actualCount';
         const actualPoints = burndownData.filter((d) => d[key] !== null);
-        if (actualPoints.length < 2)
-            return [] as { date: string; projection: number }[];
+
+        if (actualPoints.length < 2) {
+return [] as { date: string; projection: number }[];
+}
 
         const last = actualPoints[actualPoints.length - 1];
         const prev = actualPoints[actualPoints.length - 2];
         const velocity = (prev[key] as number) - (last[key] as number);
 
-        if (velocity <= 0) return [] as { date: string; projection: number }[];
+        if (velocity <= 0) {
+return [] as { date: string; projection: number }[];
+}
 
         const futurePoints = burndownData.filter((d) => d[key] === null);
+
         return futurePoints.reduce<{ date: string; projection: number }[]>(
             (acc, d, i) => {
                 const base =
                     i === 0 ? (last[key] as number) : acc[i - 1].projection;
+
                 return [
                     ...acc,
                     { date: d.date, projection: Math.max(0, base - velocity) },
@@ -192,102 +182,6 @@ export default function SprintShow({
         router.patch(issueUpdate({ issue: taskId }).url, {
             estimated_hours: parsed,
         });
-    };
-
-    /** スプリント完了モーダルを開く際にプレビュー情報を取得 */
-    const handleOpenCompleteModal = async () => {
-        setShowCompleteModal(true);
-        setIsLoadingPreview(true);
-        try {
-            const response = await fetch(
-                `/sprints/${sprint.id}/complete-preview`,
-            );
-            if (response.ok) {
-                const data = (await response.json()) as {
-                    issues: Array<{
-                        id: number;
-                        github_issue_number: number;
-                        title: string;
-                        state: string;
-                        story_points: number | null;
-                    }>;
-                    nextSprints: Array<{
-                        id: number;
-                        title: string;
-                        start_date: string;
-                    }>;
-                };
-                setOpenIssuesPreview(data.issues);
-                setNextSprints(data.nextSprints);
-                // デフォルトではすべてのIssueをcarry_overにする
-                const defaultDispositions: Record<
-                    number,
-                    'carry_over' | 'backlog' | 'keep'
-                > = {};
-                data.issues.forEach((issue) => {
-                    defaultDispositions[issue.id] = 'carry_over';
-                });
-                setDispositions(defaultDispositions);
-                // デフォルトでは最初のnextSprintを選択
-                if (data.nextSprints.length > 0) {
-                    setNextSprintId(data.nextSprints[0].id);
-                }
-            }
-        } catch (error) {
-            alert('スプリント完了情報の取得に失敗しました');
-            console.error(error);
-        } finally {
-            setIsLoadingPreview(false);
-        }
-    };
-
-    /** スプリント完了を確認して送信 */
-    const handleCompleteSprintSubmit = async () => {
-        // carry_overを選択しているが、nextSprintIdが未設定の場合はエラー
-        const hasCarryOver = Object.values(dispositions).includes('carry_over');
-        if (hasCarryOver && !nextSprintId) {
-            alert(
-                '持ち越し対象を選択している場合は、次のスプリントを選択してください',
-            );
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            const response = await fetch(`/sprints/${sprint.id}/complete`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': (
-                        document.querySelector(
-                            'meta[name="csrf-token"]',
-                        ) as HTMLMetaElement
-                    )?.content,
-                },
-                body: JSON.stringify({
-                    issue_dispositions: dispositions,
-                    next_sprint_id: nextSprintId,
-                    carry_over_reason:
-                        carryOverReason === '' ? null : carryOverReason,
-                }),
-            });
-
-            if (response.ok) {
-                alert('スプリントを完了しました');
-                router.reload();
-            } else {
-                const data = (await response.json()) as { error?: string };
-                alert(
-                    `エラー: ${data.error || 'スプリント完了に失敗しました'}`,
-                );
-            }
-        } catch (error) {
-            alert(
-                `エラー: ${error instanceof Error ? error.message : 'スプリント完了に失敗しました'}`,
-            );
-        } finally {
-            setIsSubmitting(false);
-        }
     };
 
     const githubUrl = (repoFullName: string, issueNumber: number) =>
@@ -407,12 +301,12 @@ export default function SprintShow({
                                 >
                                     持越
                                 </button>
-                                <button
-                                    onClick={handleOpenCompleteModal}
+                                <Link
+                                    href={sprintRoutes.index()}
                                     className="rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 transition-colors hover:bg-green-100 dark:border-green-700 dark:bg-green-950 dark:text-green-300 dark:hover:bg-green-900"
                                 >
                                     スプリント完了
-                                </button>
+                                </Link>
                             </>
                         )}
                     </div>
@@ -493,6 +387,44 @@ export default function SprintShow({
                                                         ? 'クローズ'
                                                         : 'オープン'}
                                                 </button>
+                                                {/* スプリントゴール紐付けボタン */}
+                                                {(() => {
+                                                    const isGoalIssue =
+                                                        goalIssueIds.includes(
+                                                            issue.id,
+                                                        );
+
+                                                    return (
+                                                        <button
+                                                            onClick={() =>
+                                                                router.post(
+                                                                    sprintRoutes.updateGoalIssue(
+                                                                        {
+                                                                            sprint: sprint.id,
+                                                                        },
+                                                                    ).url,
+                                                                    {
+                                                                        issue_id:
+                                                                            issue.id,
+                                                                        linked: !isGoalIssue,
+                                                                    },
+                                                                    {
+                                                                        preserveScroll: true,
+                                                                    },
+                                                                )
+                                                            }
+                                                            className={
+                                                                isGoalIssue
+                                                                    ? 'rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-300'
+                                                                    : 'rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                                            }
+                                                        >
+                                                            {isGoalIssue
+                                                                ? '🎯 ゴール'
+                                                                : 'ゴール紐付け'}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                                 {issue.assignees.length > 0 && (
@@ -828,6 +760,7 @@ export default function SprintShow({
                                                     actualCount: '実績',
                                                     projection: '予測',
                                                 };
+
                                                 return [
                                                     `${value} ${unit}`,
                                                     labels[name] ?? name,
@@ -846,6 +779,7 @@ export default function SprintShow({
                                                     actualCount: '実績',
                                                     projection: '予測',
                                                 };
+
                                                 return labels[v] ?? v;
                                             }}
                                         />
