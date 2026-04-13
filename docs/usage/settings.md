@@ -4,7 +4,8 @@
 
 | メニュー | URL | 概要 |
 |---|---|---|
-| 一般 | `/settings/general` | 工数計算の基準時間・外観・実績入力設定 |
+| 一般 | `/settings/general` | 工数計算の基準時間・外観・実績入力設定・WIP制限・DoR設定 |
+| 通知 | `/settings/notifications` | Teams/Slack Webhook URL・通知イベントの設定 |
 | リポジトリ | `/settings/repositories` | GitHub リポジトリの追加・同期設定 |
 | メンバー | `/settings/members` | チームメンバーの表示名・稼働時間 |
 | ラベル | `/settings/labels` | ベロシティ計算の管理対象ラベル設定 |
@@ -29,6 +30,63 @@
 | GitHub ステータス優先度順 | 配下 Story に複数ステータスがある場合、上位のステータスをエピックのステータスとして採用する優先度リスト。GitHub 同期時に未知のステータスは末尾に自動追加される | 同期後に自動設定 |
 
 外観の切り替えはボタン選択後すぐに反映されます。その他の設定は「保存」ボタンをクリックすると保存されます。
+
+### WIP 制限（列ごと）
+
+スプリントボードの各列に WIP（Work In Progress）上限を設定します。
+
+| 列 | 説明 |
+|---|---|
+| Todo | Todo 列の同時進行 Issue 上限数 |
+| 進行中 | In Progress 列の上限数 |
+| レビュー中 | In Review 列の上限数 |
+| 完了 | Done 列の上限数 |
+
+- 0 = 無制限（デフォルト）
+- 上限を超えた列はボード上で赤くハイライトされます
+
+### Definition of Ready（DoR）チェックリスト
+
+スプリント計画画面で表示する DoR チェックリストの項目を管理します。
+
+- 1 行につき 1 項目を入力します（改行区切り）
+- 空にすると DoR セクションが非表示になります
+- デフォルトは空（無設定）
+
+---
+
+## 通知設定
+
+**URL**: `/settings/notifications`
+
+Microsoft Teams および Slack への Webhook 通知を設定します。
+
+### Webhook URL の設定
+
+| フィールド | 説明 |
+|---|---|
+| Teams Webhook URL（メイン） | Microsoft Teams の Incoming Webhook URL |
+| Slack Webhook URL | Slack の Incoming Webhook URL |
+
+どちらか一方のみ設定することも可能です。
+
+### 通知イベント
+
+| イベント | トリガー |
+|---|---|
+| スプリント開始 | スプリントが `open` 状態になったとき |
+| スプリント完了 | スプリント完了ウィザードでスプリントが `closed` になったとき |
+| ブロッカー発生 | Issue の `is_blocker` フラグが true に設定されたとき |
+| デイリースクラムリマインダー | 毎朝のリマインダー通知（スケジュール設定が必要） |
+
+各イベントのトグルスイッチでオン/オフを切り替えられます。
+
+### テスト送信
+
+「テスト送信」ボタンをクリックすると、設定済みの Webhook に確認メッセージが送信されます（`POST /settings/notifications/test`）。
+保存前に接続確認を行う際に使用してください。
+
+> Teams は Adaptive Card 形式、Slack は Block Kit 形式で送信されます。
 
 ---
 
