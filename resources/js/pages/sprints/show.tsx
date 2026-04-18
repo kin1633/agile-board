@@ -1,6 +1,6 @@
-import { Head, router } from '@inertiajs/react';
-import { ExternalLink } from 'lucide-react';
-import { useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import { AlertTriangle, ExternalLink, Kanban, ListTodo } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import {
     Bar,
     BarChart,
@@ -8,13 +8,14 @@ import {
     Legend,
     Line,
     LineChart,
+    ReferenceLine,
     ResponsiveContainer,
     Tooltip,
     XAxis,
     YAxis,
 } from 'recharts';
 import AppLayout from '@/layouts/app-layout';
-import { update as issueUpdate } from '@/routes/issues';
+import { update as issueUpdate, updateGithubState } from '@/routes/issues';
 import sprintRoutes from '@/routes/sprints';
 import { index as workLogsIndex } from '@/routes/work-logs';
 import type { BreadcrumbItem } from '@/types';
@@ -22,6 +23,7 @@ import type { BreadcrumbItem } from '@/types';
 interface SprintInfo {
     id: number;
     title: string;
+    goal: string | null;
     start_date: string | null;
     end_date: string | null;
     working_days: number;
@@ -62,6 +64,7 @@ interface Issue {
     assignees: string[];
     story_points: number | null;
     exclude_velocity: boolean;
+    is_blocker: boolean;
     closed_at: string | null;
     epic: Epic | null;
     labels: Label[];
@@ -72,6 +75,8 @@ interface BurndownPoint {
     date: string;
     ideal: number | null;
     actual: number | null;
+    idealCount: number | null;
+    actualCount: number | null;
 }
 
 interface AssigneeWorkload {
@@ -91,6 +96,7 @@ interface Props {
     burndownData: BurndownPoint[];
     assigneeWorkload: AssigneeWorkload[];
     epics: EpicOption[];
+    goalIssueIds: number[];
 }
 
 type Tab = 'issues' | 'burndown' | 'workload';
@@ -101,14 +107,68 @@ export default function SprintShow({
     burndownData,
     assigneeWorkload,
     epics,
+    goalIssueIds,
 }: Props) {
     const [activeTab, setActiveTab] = useState<Tab>('issues');
+    const [burndownMode, setBurndownMode] = useState<'points' | 'count'>(
+        'points',
+    );
+
+    /** 今日の日付文字列（バーンダウンチャートの今日マーカー用） */
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    /**
+     * 直近の実績ペースから未来を外挿した予測線を計算する。
+     * 直近2点の傾きを使い、実績が null の日付に prediction 値を付与する。
+     * 進捗がない（velocity <= 0）場合は空配列を返す。
+     */
+    const projectionData = useMemo(() => {
+        const key = burndownMode === 'points' ? 'actual' : 'actualCount';
+        const actualPoints = burndownData.filter((d) => d[key] !== null);
+
+        if (actualPoints.length < 2) {
+return [] as { date: string; projection: number }[];
+}
+
+        const last = actualPoints[actualPoints.length - 1];
+        const prev = actualPoints[actualPoints.length - 2];
+        const velocity = (prev[key] as number) - (last[key] as number);
+
+        if (velocity <= 0) {
+return [] as { date: string; projection: number }[];
+}
+
+        const futurePoints = burndownData.filter((d) => d[key] === null);
+
+        return futurePoints.reduce<{ date: string; projection: number }[]>(
+            (acc, d, i) => {
+                const base =
+                    i === 0 ? (last[key] as number) : acc[i - 1].projection;
+
+                return [
+                    ...acc,
+                    { date: d.date, projection: Math.max(0, base - velocity) },
+                ];
+            },
+            [],
+        );
+    }, [burndownData, burndownMode]);
 
     /** Issue のエピック（案件）紐付けを更新する */
     const handleEpicChange = (issue: Issue, epicId: string) => {
         router.patch(issueUpdate({ issue: issue.id }).url, {
             epic_id: epicId === '' ? null : Number(epicId),
         });
+    };
+
+    /** GitHub の Issue 状態（open/closed）を切り替える */
+    const handleToggleGithubState = (issue: Issue) => {
+        const newState = issue.state === 'open' ? 'closed' : 'open';
+        router.patch(
+            updateGithubState({ issue: issue.id }).url,
+            { state: newState },
+            { preserveScroll: true },
+        );
     };
 
     /** タスクの予定工数をblur時にPATCH送信する（実績はワークログで管理） */
@@ -144,6 +204,11 @@ export default function SprintShow({
                         <h1 className="text-xl font-semibold">
                             {sprint.title}
                         </h1>
+                        {sprint.goal && (
+                            <p className="mt-1 text-sm font-medium text-primary">
+                                🎯 {sprint.goal}
+                            </p>
+                        )}
                         <p className="text-sm text-muted-foreground">
                             {sprint.start_date} 〜 {sprint.end_date} (
                             {sprint.working_days} 営業日)
@@ -196,6 +261,55 @@ export default function SprintShow({
                             ),
                         )}
                     </div>
+                    {/* ボード・計画・レビューへのリンク */}
+                    <div className="flex gap-2">
+                        <Link
+                            href={sprintRoutes.board({ sprint: sprint.id }).url}
+                            className="flex items-center gap-1.5 rounded-md border border-sidebar-border/70 px-3 py-1.5 text-sm transition-colors hover:bg-muted/50"
+                        >
+                            <Kanban className="h-4 w-4" />
+                            ボード
+                        </Link>
+                        <Link
+                            href={sprintRoutes.plan({ sprint: sprint.id }).url}
+                            className="flex items-center gap-1.5 rounded-md border border-sidebar-border/70 px-3 py-1.5 text-sm transition-colors hover:bg-muted/50"
+                        >
+                            <ListTodo className="h-4 w-4" />
+                            計画
+                        </Link>
+                        <Link
+                            href={
+                                sprintRoutes.review({ sprint: sprint.id }).url
+                            }
+                            className="flex items-center gap-1.5 rounded-md border border-sidebar-border/70 px-3 py-1.5 text-sm transition-colors hover:bg-muted/50"
+                        >
+                            レビュー
+                        </Link>
+                        {sprint.state !== 'closed' && (
+                            <>
+                                <button
+                                    onClick={() =>
+                                        router.post(
+                                            sprintRoutes.carryOver({
+                                                sprint: sprint.id,
+                                            }).url,
+                                            {},
+                                            { preserveScroll: true },
+                                        )
+                                    }
+                                    className="rounded-md border border-sidebar-border/70 px-3 py-1.5 text-sm transition-colors hover:bg-muted/50"
+                                >
+                                    持越
+                                </button>
+                                <Link
+                                    href={sprintRoutes.index()}
+                                    className="rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 transition-colors hover:bg-green-100 dark:border-green-700 dark:bg-green-950 dark:text-green-300 dark:hover:bg-green-900"
+                                >
+                                    スプリント完了
+                                </Link>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Issue 一覧タブ */}
@@ -214,6 +328,14 @@ export default function SprintShow({
                                                 <span className="text-xs text-muted-foreground">
                                                     #{issue.github_issue_number}
                                                 </span>
+                                                {issue.is_blocker && (
+                                                    <span className="flex items-center gap-0.5 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-300">
+                                                        <AlertTriangle
+                                                            size={10}
+                                                        />
+                                                        ブロッカー
+                                                    </span>
+                                                )}
                                                 <span className="text-sm">
                                                     {issue.title}
                                                 </span>
@@ -248,6 +370,61 @@ export default function SprintShow({
                                                         {label.name}
                                                     </span>
                                                 ))}
+                                                {/* GitHub Issue 状態切り替えボタン */}
+                                                <button
+                                                    onClick={() =>
+                                                        handleToggleGithubState(
+                                                            issue,
+                                                        )
+                                                    }
+                                                    className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+                                                        issue.state === 'open'
+                                                            ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                                            : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                    }`}
+                                                >
+                                                    {issue.state === 'open'
+                                                        ? 'クローズ'
+                                                        : 'オープン'}
+                                                </button>
+                                                {/* スプリントゴール紐付けボタン */}
+                                                {(() => {
+                                                    const isGoalIssue =
+                                                        goalIssueIds.includes(
+                                                            issue.id,
+                                                        );
+
+                                                    return (
+                                                        <button
+                                                            onClick={() =>
+                                                                router.post(
+                                                                    sprintRoutes.updateGoalIssue(
+                                                                        {
+                                                                            sprint: sprint.id,
+                                                                        },
+                                                                    ).url,
+                                                                    {
+                                                                        issue_id:
+                                                                            issue.id,
+                                                                        linked: !isGoalIssue,
+                                                                    },
+                                                                    {
+                                                                        preserveScroll: true,
+                                                                    },
+                                                                )
+                                                            }
+                                                            className={
+                                                                isGoalIssue
+                                                                    ? 'rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-300'
+                                                                    : 'rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                                            }
+                                                        >
+                                                            {isGoalIssue
+                                                                ? '🎯 ゴール'
+                                                                : 'ゴール紐付け'}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                                 {issue.assignees.length > 0 && (
@@ -286,6 +463,25 @@ export default function SprintShow({
                                                                 <span className="text-xs">
                                                                     {task.title}
                                                                 </span>
+                                                                {/* タスク状態切り替えボタン */}
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleToggleGithubState(
+                                                                            task as unknown as Issue,
+                                                                        )
+                                                                    }
+                                                                    className={`rounded-full px-1.5 py-0.5 text-xs font-medium transition-colors ${
+                                                                        task.state ===
+                                                                        'open'
+                                                                            ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                                                            : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                                    }`}
+                                                                >
+                                                                    {task.state ===
+                                                                    'open'
+                                                                        ? 'クローズ'
+                                                                        : 'オープン'}
+                                                                </button>
                                                             </div>
                                                             {/* タスク右側: 日程・担当者・工数・記録リンク */}
                                                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -427,51 +623,213 @@ export default function SprintShow({
                 {/* バーンダウンチャートタブ */}
                 {activeTab === 'burndown' && (
                     <div className="rounded-xl border border-sidebar-border/70 bg-card p-6">
-                        <h2 className="mb-4 text-sm font-semibold">
-                            バーンダウンチャート
-                        </h2>
+                        {/* ヘッダー：タイトルとポイント/タスク数の切り替えボタン */}
+                        <div className="mb-4 flex items-center justify-between">
+                            <h2 className="text-sm font-semibold">
+                                バーンダウンチャート
+                            </h2>
+                            <div className="flex rounded-md border border-sidebar-border/70 text-xs">
+                                <button
+                                    onClick={() => setBurndownMode('points')}
+                                    className={`rounded-l-md px-2.5 py-1 ${burndownMode === 'points' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                >
+                                    ポイント
+                                </button>
+                                <button
+                                    onClick={() => setBurndownMode('count')}
+                                    className={`rounded-r-md border-l border-sidebar-border/70 px-2.5 py-1 ${burndownMode === 'count' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                >
+                                    タスク数
+                                </button>
+                            </div>
+                        </div>
                         {burndownData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={300}>
-                                <LineChart data={burndownData}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis
-                                        dataKey="date"
-                                        tick={{ fontSize: 11 }}
-                                        tickFormatter={(v: string) =>
-                                            v.slice(5)
-                                        }
-                                    />
-                                    <YAxis tick={{ fontSize: 11 }} />
-                                    <Tooltip
-                                        formatter={(
-                                            value: number,
-                                            name: string,
-                                        ) => [
-                                            `${value} pt`,
-                                            name === 'ideal' ? '理想' : '実績',
-                                        ]}
-                                    />
-                                    <Legend
-                                        formatter={(v) =>
-                                            v === 'ideal' ? '理想' : '実績'
-                                        }
-                                    />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="ideal"
-                                        stroke="#94a3b8"
-                                        strokeDasharray="5 5"
-                                        dot={false}
-                                    />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="actual"
-                                        stroke="#3b82f6"
-                                        dot={false}
-                                        connectNulls={false}
-                                    />
-                                </LineChart>
-                            </ResponsiveContainer>
+                            <>
+                                {/* サマリー：残ポイント/タスク・残日数・完了率 */}
+                                {(() => {
+                                    const key =
+                                        burndownMode === 'points'
+                                            ? 'actual'
+                                            : 'actualCount';
+                                    const totalKey =
+                                        burndownMode === 'points'
+                                            ? 'ideal'
+                                            : 'idealCount';
+                                    const unit =
+                                        burndownMode === 'points' ? 'pt' : '件';
+                                    const label =
+                                        burndownMode === 'points'
+                                            ? 'ポイント'
+                                            : 'タスク';
+                                    const total =
+                                        (burndownData[0]?.[totalKey] as
+                                            | number
+                                            | null) ?? 0;
+                                    const latestActual = [...burndownData]
+                                        .reverse()
+                                        .find((d) => d[key] !== null);
+                                    const remaining =
+                                        (latestActual?.[key] as
+                                            | number
+                                            | null) ?? total;
+                                    const doneRate =
+                                        total > 0
+                                            ? Math.round(
+                                                  ((total - remaining) /
+                                                      total) *
+                                                      100,
+                                              )
+                                            : 0;
+                                    const futureDays = burndownData.filter(
+                                        (d) => d[key] === null,
+                                    ).length;
+
+                                    return (
+                                        <div className="mb-4 flex gap-6 text-sm">
+                                            <div className="text-center">
+                                                <p className="text-xl font-bold">
+                                                    {remaining}
+                                                    <span className="ml-1 text-xs text-muted-foreground">
+                                                        {unit}
+                                                    </span>
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    残{label}
+                                                </p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xl font-bold">
+                                                    {futureDays}
+                                                    <span className="ml-1 text-xs text-muted-foreground">
+                                                        日
+                                                    </span>
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    残日数
+                                                </p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p
+                                                    className={`text-xl font-bold ${doneRate >= 80 ? 'text-green-600' : doneRate >= 50 ? 'text-yellow-600' : 'text-red-500'}`}
+                                                >
+                                                    {doneRate}%
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    完了率
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                                {/* チャート本体 */}
+                                <ResponsiveContainer width="100%" height={300}>
+                                    <LineChart
+                                        data={burndownData.map((d) => ({
+                                            ...d,
+                                            projection:
+                                                projectionData.find(
+                                                    (p) => p.date === d.date,
+                                                )?.projection ?? null,
+                                        }))}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis
+                                            dataKey="date"
+                                            tick={{ fontSize: 11 }}
+                                            tickFormatter={(v: string) =>
+                                                v.slice(5)
+                                            }
+                                        />
+                                        <YAxis tick={{ fontSize: 11 }} />
+                                        <Tooltip
+                                            formatter={(
+                                                value: number,
+                                                name: string,
+                                            ) => {
+                                                const unit =
+                                                    burndownMode === 'points'
+                                                        ? 'pt'
+                                                        : '件';
+                                                const labels: Record<
+                                                    string,
+                                                    string
+                                                > = {
+                                                    ideal: '理想',
+                                                    idealCount: '理想',
+                                                    actual: '実績',
+                                                    actualCount: '実績',
+                                                    projection: '予測',
+                                                };
+
+                                                return [
+                                                    `${value} ${unit}`,
+                                                    labels[name] ?? name,
+                                                ];
+                                            }}
+                                        />
+                                        <Legend
+                                            formatter={(v) => {
+                                                const labels: Record<
+                                                    string,
+                                                    string
+                                                > = {
+                                                    ideal: '理想',
+                                                    idealCount: '理想',
+                                                    actual: '実績',
+                                                    actualCount: '実績',
+                                                    projection: '予測',
+                                                };
+
+                                                return labels[v] ?? v;
+                                            }}
+                                        />
+                                        {/* 今日の縦線マーカー */}
+                                        <ReferenceLine
+                                            x={todayStr}
+                                            stroke="#f97316"
+                                            strokeDasharray="3 3"
+                                            label={{
+                                                value: '今日',
+                                                fontSize: 10,
+                                                fill: '#f97316',
+                                            }}
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey={
+                                                burndownMode === 'points'
+                                                    ? 'ideal'
+                                                    : 'idealCount'
+                                            }
+                                            stroke="#94a3b8"
+                                            strokeDasharray="5 5"
+                                            dot={false}
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey={
+                                                burndownMode === 'points'
+                                                    ? 'actual'
+                                                    : 'actualCount'
+                                            }
+                                            stroke="#3b82f6"
+                                            dot={false}
+                                            connectNulls={false}
+                                        />
+                                        {/* 現在ペースからの予測線（進捗がある場合のみ表示） */}
+                                        {projectionData.length > 0 && (
+                                            <Line
+                                                type="monotone"
+                                                dataKey="projection"
+                                                stroke="#f97316"
+                                                strokeDasharray="4 2"
+                                                dot={false}
+                                                connectNulls={false}
+                                            />
+                                        )}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </>
                         ) : (
                             <p className="text-sm text-muted-foreground">
                                 データがありません

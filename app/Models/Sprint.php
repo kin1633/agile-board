@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * start_date と working_days はユーザーが手動で設定する項目のため、
  * GitHub 同期（GitHubSyncService）で上書きしてはならない。
  */
-#[Fillable(['milestone_id', 'github_iteration_id', 'title', 'start_date', 'end_date', 'working_days', 'iteration_duration_days', 'state'])]
+#[Fillable(['milestone_id', 'github_iteration_id', 'title', 'start_date', 'end_date', 'working_days', 'iteration_duration_days', 'state', 'goal'])]
 class Sprint extends Model
 {
     use HasFactory;
@@ -40,6 +40,11 @@ class Sprint extends Model
     public function retrospectives(): HasMany
     {
         return $this->hasMany(Retrospective::class);
+    }
+
+    public function sprintReviews(): HasMany
+    {
+        return $this->hasMany(SprintReview::class);
     }
 
     /**

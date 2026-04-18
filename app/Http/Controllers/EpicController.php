@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Epic;
 use App\Models\Holiday;
 use App\Models\Member;
+use App\Models\Milestone;
 use App\Models\Setting;
 use App\Models\Sprint;
 use Carbon\Carbon;
@@ -25,8 +26,20 @@ class EpicController extends Controller
             fn (Epic $epic) => $this->formatEpic($epic, $estimation['team_daily_hours'])
         );
 
+        // マイルストーン一覧（ロードマップ用：ID、タイトル、開始日、終了日、ステータス）
+        $milestones = Milestone::select('id', 'title', 'started_at', 'due_date', 'status')
+            ->get()
+            ->map(fn (Milestone $m) => [
+                'id' => $m->id,
+                'title' => $m->title,
+                'state' => $m->status,
+                'start_date' => $m->started_at?->toDateString(),
+                'due_date' => $m->due_date?->toDateString(),
+            ]);
+
         return Inertia::render('epics/index', [
             'epics' => $epics,
+            'milestones' => $milestones,
             'estimation' => $estimation,
             // GitHub Projects から取得した色情報（name => GitHub color enum のマップ）
             'statusColors' => json_decode(Setting::where('key', 'epic_github_status_colors')->value('value') ?? '{}', true),
@@ -191,6 +204,8 @@ class EpicController extends Controller
      * 着手日目安: due_date から予定工数÷チーム日次工数（営業日）を遡った日付。
      * team_daily_hours が 0 の場合（メンバー未登録）は null を返す。
      *
+     * ロードマップ用日程: このエピックに関連するスプリントから最古の開始日と最新の終了日を計算。
+     *
      * @param  int  $teamDailyHours  チーム全員の daily_hours 合計
      * @return array<string, mixed>
      */
@@ -285,6 +300,17 @@ class EpicController extends Controller
             )->toDateString();
         }
 
+        // ロードマップ用日程（このエピックの Issue に関連するスプリントの日程から計算）
+        $roadmapStartDate = null;
+        $roadmapEndDate = null;
+        $sprintDates = Sprint::whereHas('issues', fn ($q) => $q->where('epic_id', $epic->id))
+            ->select('start_date', 'end_date')
+            ->get();
+        if ($sprintDates->isNotEmpty()) {
+            $roadmapStartDate = $sprintDates->min('start_date')?->toDateString();
+            $roadmapEndDate = $sprintDates->max('end_date')?->toDateString();
+        }
+
         return [
             'id' => $epic->id,
             'title' => $epic->title,
@@ -303,6 +329,8 @@ class EpicController extends Controller
             'assignees' => $epicAssignees,
             'estimated_hours' => $epicEstimated > 0 ? (float) round($epicEstimated, 2) : null,
             'actual_hours' => $epicActual > 0 ? (float) round($epicActual, 2) : null,
+            'roadmap_start_date' => $roadmapStartDate,
+            'roadmap_end_date' => $roadmapEndDate,
             'issues' => $formattedIssues,
         ];
     }

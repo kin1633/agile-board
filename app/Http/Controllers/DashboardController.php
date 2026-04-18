@@ -13,29 +13,53 @@ class DashboardController extends Controller
 {
     public function __invoke(Request $request): Response
     {
-        // 直近のオープンスプリントを現在のスプリントとして扱う
-        $currentSprint = Sprint::where('state', 'open')
-            ->orderBy('end_date')
-            ->with(['issues.labels', 'retrospectives'])
-            ->first();
+        // 全スプリント一覧（プルダウン用）: end_date 降順
+        $sprints = Sprint::orderByDesc('end_date')->get();
 
-        $metrics = $this->buildMetrics($currentSprint);
-        $burndownData = $this->buildBurndownData($currentSprint);
-        $kptSummary = $this->buildKptSummary($currentSprint);
-        $openIssues = $this->buildOpenIssues($currentSprint);
+        // スプリント選択：クエリパラメータ → 期間中のスプリント → openスプリント → 最新スプリントの順でフォールバック
+        $selectedSprintId = $request->integer('sprint_id') ?: null;
+        if ($selectedSprintId) {
+            $selectedSprint = Sprint::find($selectedSprintId);
+        } else {
+            $today = now()->toDateString();
+            $selectedSprint = Sprint::where('start_date', '<=', $today)
+                ->where('end_date', '>=', $today)
+                ->orderByDesc('end_date')
+                ->first()
+                ?? Sprint::where('state', 'open')->orderByDesc('end_date')->first()
+                ?? Sprint::orderByDesc('end_date')->first();
+        }
+
+        // eager load は選択されたスプリントのみ実行する
+        $selectedSprint?->load(['issues.labels', 'retrospectives']);
+
+        $metrics = $this->buildMetrics($selectedSprint);
+        $burndownData = $this->buildBurndownData($selectedSprint);
+        $kptSummary = $this->buildKptSummary($selectedSprint);
+        $openIssues = $this->buildOpenIssues($selectedSprint);
+        $velocityTrend = $this->buildVelocityTrend();
 
         return Inertia::render('dashboard', [
-            'currentSprint' => $currentSprint ? [
-                'id' => $currentSprint->id,
-                'title' => $currentSprint->title,
-                'start_date' => $currentSprint->start_date?->toDateString(),
-                'end_date' => $currentSprint->end_date?->toDateString(),
-                'working_days' => $currentSprint->working_days,
+            'sprints' => $sprints->map(fn (Sprint $s) => [
+                'id' => $s->id,
+                'title' => $s->title,
+                'state' => $s->state,
+                'start_date' => $s->start_date?->toDateString(),
+                'end_date' => $s->end_date?->toDateString(),
+            ])->values(),
+            'selectedSprint' => $selectedSprint ? [
+                'id' => $selectedSprint->id,
+                'title' => $selectedSprint->title,
+                'goal' => $selectedSprint->goal,
+                'start_date' => $selectedSprint->start_date?->toDateString(),
+                'end_date' => $selectedSprint->end_date?->toDateString(),
+                'working_days' => $selectedSprint->working_days,
             ] : null,
             'metrics' => $metrics,
             'burndownData' => $burndownData,
             'kptSummary' => $kptSummary,
             'openIssues' => $openIssues,
+            'velocityTrend' => $velocityTrend,
         ]);
     }
 
@@ -129,6 +153,32 @@ class DashboardController extends Controller
             'problem' => $counts->get('problem', 0),
             'try' => $counts->get('try', 0),
         ];
+    }
+
+    /**
+     * 過去スプリントのベロシティトレンドを返す。
+     *
+     * 直近8スプリントのポイントベロシティとIssueベロシティを返す。
+     * 進行中スプリントは除外し、完了分のみ集計する。
+     *
+     * @return array<int, array{title: string, point_velocity: int, issue_velocity: int}>
+     */
+    private function buildVelocityTrend(): array
+    {
+        $today = now()->toDateString();
+
+        return Sprint::where('end_date', '<', $today)
+            ->orderByDesc('end_date')
+            ->limit(8)
+            ->get()
+            ->reverse()
+            ->map(fn (Sprint $sprint) => [
+                'title' => $sprint->title,
+                'point_velocity' => $sprint->pointVelocity(),
+                'issue_velocity' => $sprint->issueVelocity(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**

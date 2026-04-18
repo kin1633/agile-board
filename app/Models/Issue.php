@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'repository_id', 'sprint_id', 'epic_id', 'parent_issue_id', 'github_issue_number',
     'title', 'state', 'project_status', 'project_priority', 'project_start_date', 'project_target_date',
     'closed_at', 'assignee_login', 'story_points', 'exclude_velocity',
+    'is_blocker', 'blocker_reason', 'carry_over_reason',
     'estimated_hours', 'actual_hours', 'synced_at',
 ])]
 class Issue extends Model
@@ -32,6 +33,7 @@ class Issue extends Model
     {
         return [
             'exclude_velocity' => 'boolean',
+            'is_blocker' => 'boolean',
             'closed_at' => 'datetime',
             'synced_at' => 'datetime',
             'estimated_hours' => 'decimal:2',
@@ -77,5 +79,11 @@ class Issue extends Model
     public function workLogs(): HasMany
     {
         return $this->hasMany(WorkLog::class);
+    }
+
+    /** 関連するPullRequest一覧 */
+    public function pullRequests(): HasMany
+    {
+        return $this->hasMany(PullRequest::class);
     }
 }

@@ -38,6 +38,35 @@ class GitHubGraphQLClient
      */
     public function query(string $query, array $variables, string $token): array
     {
+        return $this->executeGraphQL($query, $variables, $token);
+    }
+
+    /**
+     * GraphQL mutation を実行して結果を返す。
+     *
+     * クエリと同じ方式で実行するため、query メソッドと同一の実装。
+     * 命名上の区別のためにこのメソッドを提供する。
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     *
+     * @throws RequestException GraphQL errors または HTTP エラー時
+     */
+    public function mutation(string $query, array $variables, string $token): array
+    {
+        return $this->executeGraphQL($query, $variables, $token);
+    }
+
+    /**
+     * GraphQL クエリ/mutation を実行する共通処理。
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     *
+     * @throws RequestException GraphQL errors または HTTP エラー時
+     */
+    private function executeGraphQL(string $query, array $variables, string $token): array
+    {
         $response = $this->http
             ->withToken($token)
             ->withHeaders([
@@ -421,6 +450,146 @@ class GitHubGraphQLClient
         ], $token);
 
         return $data['repository']['issue']['id'] ?? null;
+    }
+
+    /**
+     * GitHub Projects 内の指定 Issue に対応する ProjectV2Item とその Status フィールド情報を取得する。
+     *
+     * 複数リポジトリが同一プロジェクトに紐付く場合を考慮し、
+     * Issue の repo_owner + repo_name で特定したうえで node_id と照合する。
+     *
+     * @return array{itemId: string|null, fieldId: string|null, statusOptionId: string|null}
+     */
+    public function fetchProjectItemAndFieldByIssue(
+        string $owner,
+        int $projectNumber,
+        string $issueNodeId,
+        string $status,
+        string $token
+    ): array {
+        $ownerType = $this->resolveOwnerType($owner, $token);
+
+        $query = <<<GRAPHQL
+        query(\$owner: String!, \$number: Int!, \$cursor: String) {
+            {$ownerType}(login: \$owner) {
+                projectV2(number: \$number) {
+                    items(first: 100, after: \$cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        nodes {
+                            id
+                            content {
+                                ... on Issue {
+                                    id
+                                }
+                            }
+                            fieldValues(first: 20) {
+                                nodes {
+                                    ... on ProjectV2ItemFieldSingleSelectValue {
+                                        field {
+                                            ... on ProjectV2SingleSelectField {
+                                                id
+                                                name
+                                                options {
+                                                    id
+                                                    name
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    fields(first: 20) {
+                        nodes {
+                            ... on ProjectV2SingleSelectField {
+                                id
+                                name
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        GRAPHQL;
+
+        $cursor = null;
+        $statusFieldId = null;
+        $statusOptions = [];
+
+        // フィールド定義から Status フィールドを取得
+        $data = $this->query($query, [
+            'owner' => $owner,
+            'number' => $projectNumber,
+            'cursor' => null,
+        ], $token);
+
+        $fields = $data[$ownerType]['projectV2']['fields']['nodes'] ?? [];
+        foreach ($fields as $field) {
+            if (isset($field['name']) && $field['name'] === 'Status') {
+                $statusFieldId = $field['id'] ?? null;
+                break;
+            }
+        }
+
+        // ProjectV2Item をページネーションで検索
+        do {
+            $data = $this->query($query, [
+                'owner' => $owner,
+                'number' => $projectNumber,
+                'cursor' => $cursor,
+            ], $token);
+
+            $items = $data[$ownerType]['projectV2']['items'];
+            $pageInfo = $items['pageInfo'];
+
+            foreach ($items['nodes'] as $item) {
+                // Issue が無い（PR等）はスキップ
+                if (empty($item['content']['id'])) {
+                    continue;
+                }
+
+                // Issue NodeID が一致したら、Status フィールドと Option を取得
+                if ($item['content']['id'] === $issueNodeId) {
+                    $fieldValueNodes = $item['fieldValues']['nodes'] ?? [];
+
+                    // Status フィールドの Option ID を取得
+                    foreach ($fieldValueNodes as $fieldValue) {
+                        if (isset($fieldValue['field']['id'], $fieldValue['field']['name']) &&
+                            $fieldValue['field']['name'] === 'Status' &&
+                            isset($fieldValue['field']['options'])) {
+                            foreach ($fieldValue['field']['options'] as $option) {
+                                if ($option['name'] === $status) {
+                                    return [
+                                        'itemId' => $item['id'],
+                                        'fieldId' => $fieldValue['field']['id'],
+                                        'statusOptionId' => $option['id'],
+                                    ];
+                                }
+                            }
+                        }
+                    }
+
+                    // Status フィールドが見つからなかったときの代替処理
+                    return [
+                        'itemId' => $item['id'],
+                        'fieldId' => $statusFieldId,
+                        'statusOptionId' => null,
+                    ];
+                }
+            }
+
+            $cursor = $pageInfo['hasNextPage'] ? $pageInfo['endCursor'] : null;
+        } while ($cursor !== null);
+
+        return [
+            'itemId' => null,
+            'fieldId' => null,
+            'statusOptionId' => null,
+        ];
     }
 
     /**

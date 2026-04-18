@@ -1,11 +1,13 @@
 import { Link } from '@inertiajs/react';
 import {
     BookOpen,
+    CalendarDays,
     Clock,
     ClipboardList,
     CalendarCheck,
     Flag,
     FolderGit2,
+    Inbox,
     LayoutGrid,
     Layers,
     ListChecks,
@@ -27,6 +29,8 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import attendanceRoutes from '@/routes/attendance';
+import backlog from '@/routes/backlog';
+import dailyScrum from '@/routes/daily-scrum';
 import epics from '@/routes/epics';
 import issues from '@/routes/issues';
 import milestones from '@/routes/milestones';
@@ -54,6 +58,11 @@ const mainNavItems: NavItem[] = [
         icon: ListChecks,
     },
     {
+        title: 'バックログ',
+        href: backlog.index().url,
+        icon: Inbox,
+    },
+    {
         title: 'マイルストーン',
         href: milestones.index().url,
         icon: Flag,
@@ -70,10 +79,15 @@ const mainNavItems: NavItem[] = [
         icon: RotateCcw,
     },
     {
+        title: 'デイリースクラム',
+        href: dailyScrum.index().url,
+        icon: CalendarDays,
+        sectionLabel: '記録',
+    },
+    {
         title: '実績入力',
         href: workLogs.index().url,
         icon: Clock,
-        sectionLabel: '記録',
     },
     {
         title: '勤怠管理',
